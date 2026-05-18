@@ -1,0 +1,88 @@
+/**
+ * 기존 설치 설비 데이터셋
+ *
+ * 현재 값은 공개 지도와 캠퍼스 배치 기반 MVP 추정치입니다.
+ * 실제 용량/연도 자료 확보 시 qty, installedYear, lng/lat만 교체하면 됩니다.
+ */
+export const PREINSTALLED_ITEMS = [
+  {
+    id: 'pre_solar_60th',
+    type: 'solar_self',
+    lng: 126.65435,
+    lat: 37.45088,
+    qty: 8,
+    buildingId: 'bldg_60th',
+    locationName: '60주년기념관 옥상',
+    installedYear: 2023,
+    locked: true,
+    source: 'preinstalled',
+    dataQuality: 'estimated',
+  },
+  {
+    id: 'pre_solar_hitech',
+    type: 'solar_self',
+    lng: 126.65725,
+    lat: 37.45065,
+    qty: 8,
+    buildingId: 'bldg_hitech',
+    locationName: '하이테크센터 옥상',
+    installedYear: 2022,
+    locked: true,
+    source: 'preinstalled',
+    dataQuality: 'estimated',
+  },
+  {
+    id: 'pre_solar_5',
+    type: 'solar_self',
+    lng: 126.65725,
+    lat: 37.44850,
+    qty: 4,
+    buildingId: 'bldg_5',
+    locationName: '5호관 옥상',
+    installedYear: 2024,
+    locked: true,
+    source: 'preinstalled',
+    dataQuality: 'estimated',
+  },
+  {
+    id: 'pre_led_library',
+    type: 'led',
+    lng: 126.65252,
+    lat: 37.44935,
+    qty: 80,
+    buildingId: 'bldg_lib',
+    locationName: '정석학술정보관',
+    installedYear: 2021,
+    locked: true,
+    source: 'preinstalled',
+    dataQuality: 'estimated',
+  },
+  {
+    id: 'pre_ev_gate',
+    type: 'ev',
+    lng: 126.65445,
+    lat: 37.44805,
+    qty: 4,
+    buildingId: null,
+    locationName: '정문 주차 구역',
+    installedYear: 2023,
+    locked: true,
+    source: 'preinstalled',
+    dataQuality: 'estimated',
+  },
+  {
+    id: 'pre_greenroof_60th',
+    type: 'greenroof',
+    lng: 126.65443,
+    lat: 37.45082,
+    qty: 180,
+    buildingId: 'bldg_60th',
+    locationName: '60주년기념관 옥상녹화',
+    installedYear: 2020,
+    locked: true,
+    source: 'preinstalled',
+    dataQuality: 'estimated',
+  },
+];
+
+export const PREINSTALLED_NOTE = '기존 설비 데이터는 MVP 추정치이며 실제 설치 자료 확보 시 교체 예정입니다.';
