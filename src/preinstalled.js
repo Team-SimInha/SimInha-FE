@@ -85,4 +85,10 @@ export const PREINSTALLED_ITEMS = [
   },
 ];
 
-export const PREINSTALLED_NOTE = '기존 설비 데이터는 MVP 추정치이며 실제 설치 자료 확보 시 교체 예정입니다.';
+export const PREINSTALLED_NOTE = '기존 설비 데이터는 공개 항공사진 + 캠퍼스 시설 안내 기반 추정치입니다. 인하대 시설팀 실데이터(설치 연도·용량) 확보 후 교체 예정 (확장 로드맵 참조).';
+
+// 기존 설비 데이터 출처 (UI/AI 프롬프트용)
+export const PREINSTALLED_SOURCE = {
+  estimated: '공개 항공사진(카카오맵·OSM) + 인하대 시설 안내 페이지 기반 추정. 실측 확보 시 교체 예정.',
+  measured: '인하대 시설팀 제공 실측 데이터.',
+};
