@@ -1,3 +1,5 @@
+import { ITEM_SOURCE_INDEX, REFERENCE_SOURCES } from './items.js';
+
 function formatKg(value) {
   return `${Math.round(value || 0).toLocaleString()} kgCO2/년`;
 }
@@ -349,7 +351,60 @@ export function composeFixedMarkdown(report = {}, context = {}) {
     '',
     markdownList(notes),
     '',
+    ...buildConstraintSection(context.metrics?.constraintSignals),
+    '## 7. 참고 출처',
+    '',
+    '본 시뮬레이션의 모든 감축계수·단가는 아래 공인 가이드라인 기반 추정치입니다. 임의 수치는 사용하지 않았으며, 인하대 실측 데이터 확보 시 보정 예정입니다.',
+    '',
+    ...buildUsedSources(context.reportItems || []),
+    '',
+    '**전체 참고문헌**',
+    '',
+    markdownList(REFERENCE_SOURCES),
+    '',
   ].join('\n');
+}
+
+function buildConstraintSection(constraintSignals) {
+  if (!constraintSignals) return [];
+  const lines = [];
+  const greenLoss = Number(constraintSignals.greenSacrificePenalty || 0);
+  const rooftopUsage = Array.isArray(constraintSignals.rooftopUsage) ? constraintSignals.rooftopUsage : [];
+  const doubleGuards = Array.isArray(constraintSignals.doubleCountGuards) ? constraintSignals.doubleCountGuards : [];
+
+  if (greenLoss > 0 || rooftopUsage.length > 0 || doubleGuards.length > 0) {
+    lines.push('## 6-A. 제약·트레이드오프 현황', '');
+    if (greenLoss > 0) {
+      lines.push(`- **녹지 훼손 손실**: -${Math.round(greenLoss).toLocaleString()} kgCO₂/년 (산림과학원 흡수계수 기준)`);
+      const breakdown = constraintSignals.greenSacrificeBreakdown || [];
+      for (const b of breakdown.slice(0, 5)) {
+        lines.push(`  - ${b.label} ${b.qty} 단위 @ ${b.zoneName} → -${Math.round(b.loss).toLocaleString()} kgCO₂/년`);
+      }
+    }
+    if (rooftopUsage.length > 0) {
+      lines.push('- **옥상 가용면적 (공조설비·통로 30% 제외)**:');
+      for (const r of rooftopUsage.slice(0, 8)) {
+        const ratio = r.available > 0 ? Math.round((r.usage / r.available) * 100) : 0;
+        const flag = ratio > 100 ? ' ❌ 초과' : ratio >= 85 ? ' ⚠️ 임박' : '';
+        lines.push(`  - ${r.zoneName}: ${Math.round(r.usage).toLocaleString()}/${Math.round(r.available).toLocaleString()}㎡ (${ratio}%)${flag}`);
+      }
+    }
+    if (doubleGuards.length > 0) {
+      const labels = doubleGuards.map((g) => g.label).join(', ');
+      lines.push(`- **이중산정 방지 적용**: ${labels} — 설치 인프라 효과만 카운트, 사용량/제3자 실적과 합산 금지`);
+    }
+    lines.push('');
+  }
+  return lines;
+}
+
+function buildUsedSources(reportItems) {
+  const usedTypes = [...new Set(reportItems.map((it) => it.type).filter(Boolean))];
+  if (!usedTypes.length) return ['- 배치된 설비가 없어 개별 출처 표기 생략'];
+  return usedTypes.map((type) => {
+    const src = ITEM_SOURCE_INDEX[type];
+    return src ? `- **${type}** — ${src}` : `- **${type}** — 출처 미등록`;
+  });
 }
 
 export function normalizeReportResponse(raw, fallbackContext = {}) {

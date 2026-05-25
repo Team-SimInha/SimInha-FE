@@ -77,6 +77,50 @@ function summarizePlacements(items) {
   };
 }
 
+function compactConstraints(metrics) {
+  const c = metrics?.constraintSignals || {};
+  return {
+    greenSacrificePenaltyKgCO2: number(c.greenSacrificePenalty),
+    greenSacrificeBreakdown: Array.isArray(c.greenSacrificeBreakdown)
+      ? c.greenSacrificeBreakdown.slice(0, 8).map((b) => ({
+        type: b.type,
+        label: b.label,
+        zoneName: b.zoneName,
+        qty: number(b.qty),
+        lossKgCO2: number(b.loss),
+      }))
+      : [],
+    rooftopUsage: Array.isArray(c.rooftopUsage)
+      ? c.rooftopUsage.slice(0, 10).map((r) => ({
+        zoneName: r.zoneName,
+        usageM2: Math.round(number(r.usage)),
+        availableM2: Math.round(number(r.available)),
+        utilizationPct: r.available > 0 ? Math.round((number(r.usage) / number(r.available)) * 100) : 0,
+        items: Array.isArray(r.items) ? r.items.slice(0, 5) : [],
+      }))
+      : [],
+    doubleCountGuards: Array.isArray(c.doubleCountGuards) ? c.doubleCountGuards : [],
+    embodiedPenaltyKgCO2: number(c.embodiedPenalty),
+    diminishingPenaltyKgCO2: number(c.diminishingPenalty),
+    synergyPenaltyKgCO2: number(c.synergyPenalty),
+    synergyBonusKgCO2: number(c.synergyBonus),
+  };
+}
+
+function buildDensitySummary(items) {
+  const byZone = {};
+  for (const it of items) {
+    const k = formatLocation(it);
+    if (!byZone[k]) byZone[k] = { zoneName: k, count: 0, types: new Set() };
+    byZone[k].count += number(it.qty || 1);
+    byZone[k].types.add(it.label || it.type);
+  }
+  return Object.values(byZone)
+    .map((z) => ({ zoneName: z.zoneName, count: z.count, typeCount: z.types.size }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+}
+
 function compactScenario(payload) {
   const metrics = payload?.metrics || {};
   const user = metrics.user || {};
@@ -131,6 +175,8 @@ function compactScenario(payload) {
       },
     },
     placementSummary: summarizePlacements(items),
+    densitySummary: buildDensitySummary(items),
+    constraintSignals: compactConstraints(metrics),
     items,
     analysisSignals: payload?.analysisSignals || {},
   };
@@ -138,7 +184,8 @@ function compactScenario(payload) {
 
 function promptFor(input) {
   return [
-    '너는 대학 캠퍼스 탄소중립 시나리오를 검토하는 에너지 컨설턴트다.',
+    '너는 대학 캠퍼스 탄소중립 정책 시뮬레이션을 검토하는 에너지 정책 컨설턴트다.',
+    '대상 독자는 시설팀·ESG 추진단·경진대회 심사위원이며, 학생 개인 행동 분석이 아닌 인프라 의사결정 보조가 목적이다.',
     '아래 JSON 데이터만 근거로 사용해 한국어 분석 내용을 작성하라.',
     '',
     '반드시 JSON 객체만 반환한다. Markdown 문서 전체를 만들지 않는다.',
@@ -152,7 +199,7 @@ function promptFor(input) {
       notes: ['유의 사항 1'],
     }, null, 2),
     '',
-    '규칙:',
+    '기본 규칙:',
     '- newPlacement 값은 사용자 신규 배치 성과다.',
     '- baseline 값은 기존 설비 성과다.',
     '- total 값을 신규 배치 성과처럼 말하지 않는다.',
@@ -164,6 +211,15 @@ function promptFor(input) {
     '- 숫자는 kgCO2/년, kWh/년, 원 단위를 유지한다.',
     '- 추정 데이터는 확정 사실처럼 말하지 않는다.',
     '- strengths, warnings, recommendations, notes는 각각 1~3개로 제한한다.',
+    '',
+    '제약 / 트레이드오프 / 밀집도 규칙 (constraintSignals 와 densitySummary 활용):',
+    '- constraintSignals.greenSacrificePenaltyKgCO2 > 0 이면 녹지 훼손 트레이드오프를 warnings 또는 recommendations 에 반드시 명시한다. greenSacrificeBreakdown 의 zoneName 과 lossKgCO2 를 인용한다.',
+    '- constraintSignals.rooftopUsage 에서 utilizationPct >= 100 인 건물은 옥상 면적 초과 (공조설비·승강기·통로 ' + Math.round(0.30 * 100) + '% 제외 적용)로 warnings 에 강하게 언급한다. utilizationPct 85~99 는 주의 수준으로 언급한다.',
+    '- constraintSignals.doubleCountGuards 에 항목이 있으면 notes 에 "설치 인프라 효과만 카운트, 사용량/제3자 실적과 합산 금지" 라는 취지를 한 문장으로 포함한다 (특히 부지대여형 태양광, BEMS-LED 시너지).',
+    '- constraintSignals.embodiedPenaltyKgCO2 와 diminishingPenaltyKgCO2 가 grossSaving 의 25% 를 넘으면 warnings 에 "설치 탄소·수확체감으로 인한 효과 감쇄" 를 명시한다.',
+    '- densitySummary 의 상위 zoneName 1~2 곳을 인용해 배치 밀집·분산 패턴을 strengths 또는 recommendations 에 반영한다.',
+    '- 모든 수치는 공인 가이드라인(한국에너지공단·한전 배출계수·산림과학원·환경부 등) 기반 추정치임을 한 번 이상 notes 에 명시한다.',
+    '- 학생 개인 실천(영수증·교통수단·생활 행동)에 대한 권고는 만들지 않는다. 정책·시설 의사결정 권고만 작성한다.',
     '',
     '입력 JSON:',
     JSON.stringify(input, null, 2),
