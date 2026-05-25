@@ -1,5 +1,6 @@
 const STORAGE_KEY = 'inha-carbon-sim.scenarios.v1';
 const LEADERBOARD_KEY = 'inha-carbon-sim.leaderboard.v1';
+const PRACTICE_LOG_KEY = 'inha-carbon-sim.practice-logs.v1';
 
 function nowIso() {
   return new Date().toISOString();
@@ -112,6 +113,29 @@ export function loadLeaderboardEntries(limit = 20) {
     })
     .slice(0, limit)
     .map((entry, index) => ({ ...entry, rank: index + 1 }));
+}
+
+export function loadPracticeLogs() {
+  return readList(PRACTICE_LOG_KEY)
+    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+}
+
+export function savePracticeLog(entry) {
+  const logs = readList(PRACTICE_LOG_KEY);
+  const log = {
+    ...entry,
+    id: entry.id || createId(),
+    createdAt: entry.createdAt || nowIso(),
+  };
+  logs.push(log);
+  writeList(PRACTICE_LOG_KEY, logs);
+  return log;
+}
+
+export function deletePracticeLog(id) {
+  const logs = readList(PRACTICE_LOG_KEY).filter((l) => l.id !== id);
+  writeList(PRACTICE_LOG_KEY, logs);
+  return logs;
 }
 
 export function saveLeaderboardEntry({ nickname, items, metrics }) {

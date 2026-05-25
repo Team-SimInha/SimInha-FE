@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Palette from './Palette.jsx';
 import CampusMap from './Map.jsx';
 import Leaderboard from './Leaderboard.jsx';
-import { DEFAULT_BUDGET, ITEM_MAP } from './items.js';
+import PersonalTrack from './PersonalTrack.jsx';
+import RoadmapPage from './RoadmapPage.jsx';
+import { DEFAULT_BUDGET, ITEM_MAP, REFERENCE_SOURCES } from './items.js';
 import { checkPlacement } from './zones.js';
 import { calculateDashboardMetrics } from './penalties.js';
 import { PREINSTALLED_ITEMS, PREINSTALLED_NOTE } from './preinstalled.js';
@@ -12,24 +14,24 @@ import { buildReportMarkdown, requestScenarioReport } from './reportApi.js';
 const ONBOARDING_KEY = 'inha-carbon-sim.onboarding.v1';
 const TOUR_STEPS = [
   {
-    title: '1. 설비와 예산을 확인하세요',
-    body: '왼쪽 패널에서 설비별 절감량, 에너지 효과, 설치 비용을 보고 선택합니다. 예산을 넘는 설비는 자동으로 비활성화됩니다.',
+    title: '1. 정책 시뮬레이터 소개',
+    body: '본 도구는 시설팀·ESG 추진단·경진대회 심사위원을 위한 캠퍼스 탄소중립 정책 시뮬레이터입니다. 모든 수치는 공인 가이드라인(한국에너지공단·한전 배출계수·국립산림과학원 등) 기반 추정치이며, 출처는 각 설비 카드 및 리포트에 표기됩니다.',
   },
   {
-    title: '2. 지도에 신규 설비를 배치하세요',
-    body: '설비를 선택한 뒤 캠퍼스 지도 위를 클릭하면 배치됩니다. 배치 가능 구역과 효율 보정은 구역 규칙에 따라 자동 계산됩니다.',
+    title: '2. 설비와 예산을 확인하세요',
+    body: '왼쪽 패널에서 설비별 절감량, 에너지 효과, 설치 비용, 출처를 확인하고 선택합니다. 예산을 넘는 설비는 자동으로 비활성화됩니다.',
   },
   {
-    title: '3. 대시보드를 읽으세요',
-    body: '상단 카드는 신규 배치 성과를 중심으로 탄소, 에너지, 비용 효율을 보여줍니다. 기존 설비 베이스라인은 총 절감량에 별도로 반영됩니다.',
+    title: '3. 현실 제약을 반영해 배치하세요',
+    body: '도로/보행로/녹지/옥상 공조설비 등 실제 제약이 자동 적용됩니다. 녹지 위 설치 시 흡수량 손실, 옥상 설치 시 공조설비 면적 충돌 등은 트레이드오프로 계산됩니다.',
   },
   {
-    title: '4. 저장하고 비교하세요',
-    body: '오른쪽 시나리오 패널에서 현재 배치를 저장하고, 다른 설계안과 비교하거나 다시 불러올 수 있습니다.',
+    title: '4. 대시보드와 분석을 읽으세요',
+    body: '상단 카드는 신규 배치 성과(탄소·에너지·비용 효율)를 보여줍니다. 기존 설비 베이스라인은 별도 합산되며, 이중산정 방지 로직이 적용됩니다.',
   },
   {
-    title: '5. 리포트와 리더보드로 정리하세요',
-    body: 'AI 리포트는 현재 설계안을 요약하고, 리더보드는 화면의 신규 배치 점수를 기준으로 제출됩니다.',
+    title: '5. 시나리오 저장 · AI 리포트',
+    body: '오른쪽에서 시나리오 저장/비교가 가능합니다. AI 리포트는 배치 제약·트레이드오프·밀집도를 모두 반영해 정책 검토 문서를 자동 생성합니다.',
   },
 ];
 
@@ -66,6 +68,16 @@ function metricSnapshot(metrics) {
     budget: metrics.budget,
     usedBudget: metrics.usedBudget,
     remainingBudget: metrics.remainingBudget,
+    constraintSignals: {
+      greenSacrificePenalty: metrics.total.greenSacrificePenalty || 0,
+      greenSacrificeBreakdown: metrics.total.greenSacrificeBreakdown || [],
+      rooftopUsage: metrics.total.rooftopUsage || [],
+      doubleCountGuards: metrics.total.doubleCountGuards || [],
+      embodiedPenalty: metrics.total.embodiedPenalty || 0,
+      diminishingPenalty: metrics.total.diminishingPenalty || 0,
+      synergyPenalty: metrics.total.synergyPenalty || 0,
+      synergyBonus: metrics.total.synergyBonus || 0,
+    },
   };
 }
 
@@ -295,6 +307,32 @@ function OnboardingTour({ step, total, onNext, onPrev, onClose }) {
   );
 }
 
+function SourcesModal({ onClose }) {
+  return (
+    <div className="modal-backdrop" role="presentation" onClick={onClose}>
+      <div className="report-modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <div>
+            <div className="modal-kicker">참고 가이드라인</div>
+            <h2>📚 본 시뮬레이터의 수치 출처</h2>
+          </div>
+          <button className="secondary icon-button" onClick={onClose} aria-label="닫기">×</button>
+        </div>
+        <p style={{ color: '#8b949e', fontSize: 13, lineHeight: 1.6, marginTop: 10 }}>
+          모든 설비별 감축계수·단가는 아래 공인 가이드라인 기반 추정치입니다. 임의 수치는 사용하지 않습니다.
+          실제 시공 전에는 현장조건·실측데이터로 보정이 필요합니다.
+        </p>
+        <ul style={{ marginTop: 14, paddingLeft: 22, color: '#c9d1d9', lineHeight: 1.8, fontSize: 13 }}>
+          {REFERENCE_SOURCES.map((src) => <li key={src}>{src}</li>)}
+        </ul>
+        <p style={{ color: '#f2cc60', fontSize: 12, marginTop: 16 }}>
+          ⚠️ 인하대 실데이터(시설팀·ESG 추진단 협조) 확보 후 1차 보정 예정 (확장 로드맵 참조).
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function ScenarioPanel({ scenarios, activeScenarioId, onSave, onLoad, onRename, onDelete }) {
   return (
     <section className="scenario-panel">
@@ -378,6 +416,7 @@ function Dashboard({ metrics, itemCount, showDetail, onToggleDetail }) {
 }
 
 export default function App() {
+  const [mode, setMode] = useState('infra');
   const [nickname, setNickname] = useState('');
   const [selectedType, setSelectedType] = useState(null);
   const [items, setItems] = useState([]);
@@ -390,6 +429,7 @@ export default function App() {
   const [reportOpen, setReportOpen] = useState(false);
   const [reportLoading, setReportLoading] = useState(false);
   const [report, setReport] = useState(null);
+  const [sourcesOpen, setSourcesOpen] = useState(false);
   const [tourStep, setTourStep] = useState(0);
   const [cameraPreset, setCameraPreset] = useState('iso');
   const [showOnboarding, setShowOnboarding] = useState(() => {
@@ -574,7 +614,34 @@ export default function App() {
   const calc = metrics.total;
 
   return (
-    <div className="app">
+    <div className="app-shell">
+      <header className="track-tabs">
+        <button
+          className={'track-tab' + (mode === 'infra' ? ' active' : '')}
+          onClick={() => setMode('infra')}
+        >
+          🏛 정책 시뮬레이터
+        </button>
+        <button
+          className={'track-tab' + (mode === 'personal' ? ' active' : '')}
+          onClick={() => setMode('personal')}
+        >
+          🌱 개인 실천 (데모)
+        </button>
+        <button
+          className={'track-tab' + (mode === 'roadmap' ? ' active' : '')}
+          onClick={() => setMode('roadmap')}
+        >
+          🚧 확장 로드맵
+        </button>
+      </header>
+
+      {mode === 'personal' ? (
+        <PersonalTrack />
+      ) : mode === 'roadmap' ? (
+        <RoadmapPage />
+      ) : (
+        <div className="app">
       <Palette
         selected={selectedType}
         onSelect={setSelectedType}
@@ -636,6 +703,9 @@ export default function App() {
             </button>
           </div>
           <div className="right">
+            <button className="secondary" onClick={() => setSourcesOpen(true)} title="모든 수치의 공인 출처 보기">
+              📚 출처
+            </button>
             <button className="secondary" onClick={handleReport}>
               AI 리포트
             </button>
@@ -677,6 +747,8 @@ export default function App() {
         />
       )}
 
+      {sourcesOpen && <SourcesModal onClose={() => setSourcesOpen(false)} />}
+
       {showOnboarding && (
         <OnboardingTour
           step={tourStep}
@@ -688,6 +760,8 @@ export default function App() {
           }}
           onClose={closeOnboarding}
         />
+      )}
+        </div>
       )}
     </div>
   );

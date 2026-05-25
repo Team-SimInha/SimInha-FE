@@ -18,9 +18,9 @@ export default function Palette({
 }) {
   return (
     <aside className="sidebar">
-      <h2>🌱 Inha Carbon Sim</h2>
+      <h2>🏛 캠퍼스 탄소중립 정책 시뮬레이터</h2>
       <p style={{ fontSize: 11, color: '#8b949e', margin: '0 0 12px' }}>
-        인하대학교 캠퍼스 탄소중립 시뮬레이터
+        인하대 · 시설팀 · ESG 추진단 · 경진대회 심사위원용
       </p>
 
       <h3>닉네임</h3>
@@ -78,6 +78,11 @@ export default function Palette({
                     {formatKrw(it.cost)} / {it.unit}
                     {!canAfford && it.coeff !== 0 ? ' · 예산 초과' : ''}
                   </div>
+                  {it.source && (
+                    <div className="palette-source" title={it.source}>
+                      📚 출처: {it.source}
+                    </div>
+                  )}
                 </div>
               </div>
             );
