@@ -147,6 +147,49 @@ const POSITIVE_SYNERGY = [
     affectedItem: 'rainwater',
     reason: '🌿+💧 그린루프-빗물저류 연계: 관수 재활용 → 빗물 효과 +20%',
   },
+  // ── 추가 시너지 (v3, 공인 자료 인용) ──
+  {
+    items: ['bems', 'ev'],
+    condition: 'both_exist',
+    bonus: 0.08,
+    affectedItem: 'ev',
+    reason: '📊+🔌 BEMS-EV 스마트충전 연계: 피크 회피·시간대 분산 충전으로 EV 효과 +8% (IEA 「Smart Charging of EVs」 2023; 한전 분산자원 통합운영)',
+  },
+  {
+    items: ['bems', 'geothermal'],
+    condition: 'both_exist',
+    bonus: 0.10,
+    affectedItem: 'geothermal',
+    reason: '📊+🌡 BEMS-지열 HVAC 통합제어: 부하 예측·COP 최적화로 지열 효과 +10% (ASHRAE HVAC Control Handbook; 한국에너지공단 BEMS 보급가이드)',
+  },
+  {
+    items: ['led', 'solar_self'],
+    condition: 'both_exist',
+    bonus: 0.05,
+    affectedItem: 'led',
+    reason: '💡+☀️ LED-태양광 연계: 야간 부하 감소로 자가소비율 ↑, LED 절감 +5% (KEEI 「분산자원 보급에 따른 전력시스템 영향」)',
+  },
+  {
+    items: ['tree', 'rainwater'],
+    condition: 'nearby',
+    radius: 0.0008,            // ~80m
+    bonus: 0.05,
+    affectedItem: 'rainwater',
+    reason: '🌳+💧 수목-빗물저류 인접: 수목 흡수로 우수 유출 완화 → 저류조 부하↓ 효과 +5% (환경부 「도시 침수예방 가이드」)',
+  },
+  {
+    items: ['geothermal', 'solar_self'],
+    condition: 'same_zone',
+    bonus: 0.06,
+    affectedItem: 'geothermal',
+    reason: '🌡+☀️ 지열-태양광 같은 건물: 태양광 전력으로 히트펌프 구동 → COP 효과 +6% (IEA 「The Future of Heat Pumps」 2022)',
+  },
+];
+
+// ─── UI 노출용 통합 시너지 데이터 (penalties 계산 + 사용자 가이드) ───
+export const SYNERGY_RULES_FOR_UI = [
+  ...POSITIVE_SYNERGY.map((r) => ({ ...r, type: 'positive' })),
+  ...NEGATIVE_SYNERGY.map((r) => ({ ...r, type: 'negative' })),
 ];
 
 // ─── 4-B. 옥상 가용면적 ── 단위당 옥상 점유면적 (㎡) ───

@@ -4,7 +4,7 @@ import CampusMap from './Map.jsx';
 import PersonalTrack from './PersonalTrack.jsx';
 import { DEFAULT_BUDGET, ITEM_MAP, REFERENCE_SOURCES, COST_TRANSPARENCY_NOTE } from './items.js';
 import { checkPlacement } from './zones.js';
-import { calculateDashboardMetrics } from './penalties.js';
+import { calculateDashboardMetrics, SYNERGY_RULES_FOR_UI } from './penalties.js';
 import { BASE_YEAR, getEffectiveCost } from './costForecast.js';
 import { PREINSTALLED_ITEMS, PREINSTALLED_NOTE } from './preinstalled.js';
 import { deleteScenario, loadScenarios, renameScenario, saveScenario } from './storage.js';
@@ -337,6 +337,86 @@ function SourcesModal({ onClose }) {
         </p>
       </div>
     </div>
+  );
+}
+
+function SynergyStatusPanel({ items }) {
+  const counts = useMemo(() => {
+    const c = {};
+    items.forEach((it) => { c[it.type] = (c[it.type] || 0) + 1; });
+    return c;
+  }, [items]);
+
+  const evaluated = useMemo(() => {
+    return SYNERGY_RULES_FOR_UI.map((rule, idx) => {
+      const has = rule.items.map((t) => (counts[t] || 0) > 0);
+      const allPresent = has.every(Boolean);
+      const somePresent = has.some(Boolean);
+      let status = 'inactive';
+      if (allPresent) status = 'active';
+      else if (somePresent) status = 'potential';
+      return { rule, idx, status, has };
+    });
+  }, [counts]);
+
+  const activeCount = evaluated.filter((e) => e.status === 'active').length;
+  const potentialCount = evaluated.filter((e) => e.status === 'potential').length;
+
+  const ordered = [
+    ...evaluated.filter((e) => e.status === 'active'),
+    ...evaluated.filter((e) => e.status === 'potential'),
+    ...evaluated.filter((e) => e.status === 'inactive'),
+  ];
+
+  return (
+    <section className="scenario-panel">
+      <div className="panel-title-row">
+        <h2 style={{ color: '#79c0ff' }}>🔄 설비 시너지</h2>
+        <span style={{ fontSize: 11, color: '#8b949e' }}>
+          ✓ {activeCount} · ◐ {potentialCount}
+        </span>
+      </div>
+      <p style={{ fontSize: 10, color: '#8b949e', margin: '0 0 8px', lineHeight: 1.4 }}>
+        설비 조합 상호효과. ✓활성 ◐잠재(일부 배치) ○비활성
+      </p>
+      <div className="synergy-list">
+        {ordered.map(({ rule, idx, status, has }) => {
+          const isPositive = rule.type === 'positive';
+          const statusIcon = status === 'active' ? '✓' : status === 'potential' ? '◐' : '○';
+          return (
+            <div key={idx} className={`synergy-row synergy-${status} synergy-${rule.type}`}>
+              <span className="synergy-status-icon">{statusIcon}</span>
+              <div className="synergy-meta">
+                <div className="synergy-types">
+                  {rule.items.map((t, i) => {
+                    const meta = ITEM_MAP[t];
+                    if (!meta) return null;
+                    return (
+                      <span
+                        key={i}
+                        className={'synergy-type ' + (has[i] ? 'present' : 'missing')}
+                        title={has[i] ? '배치됨' : '필요'}
+                      >
+                        {meta.icon} {meta.label}
+                      </span>
+                    );
+                  })}
+                  <span className="synergy-effect">
+                    {isPositive ? '+' : '−'}
+                    {rule.bonus !== undefined
+                      ? Math.round(rule.bonus * 100)
+                      : rule.penalty !== undefined
+                      ? Math.round(rule.penalty * 100)
+                      : '?'}%
+                  </span>
+                </div>
+                <div className="synergy-reason">{rule.reason}</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -737,6 +817,7 @@ export default function App() {
           onRename={handleRenameScenario}
           onDelete={handleDeleteScenario}
         />
+        <SynergyStatusPanel items={items} />
       </aside>
 
       {reportOpen && (

@@ -381,6 +381,71 @@ body { background: #0e1116; color: #e6edf3; }
   flex-shrink: 0;
 }
 
+/* ── 설비 시너지 상태 패널 ── */
+.synergy-list {
+  display: flex; flex-direction: column; gap: 4px;
+  max-height: 360px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+.synergy-row {
+  display: flex; gap: 8px;
+  padding: 7px 8px;
+  border-radius: 6px;
+  background: #21262d;
+  border: 1px solid #30363d;
+  font-size: 11px;
+  line-height: 1.4;
+  transition: opacity .15s;
+}
+.synergy-status-icon {
+  font-size: 14px;
+  font-weight: 700;
+  flex-shrink: 0;
+  width: 16px;
+  text-align: center;
+  align-self: flex-start;
+  margin-top: 2px;
+}
+.synergy-row.synergy-active.synergy-positive { border-color: #7ee78766; background: #1a2a1f; }
+.synergy-row.synergy-active.synergy-positive .synergy-status-icon { color: #7ee787; }
+.synergy-row.synergy-active.synergy-negative { border-color: #f8514966; background: #2d1418; }
+.synergy-row.synergy-active.synergy-negative .synergy-status-icon { color: #ff7b72; }
+.synergy-row.synergy-potential { border-style: dashed; opacity: 0.85; }
+.synergy-row.synergy-potential .synergy-status-icon { color: #f2cc60; }
+.synergy-row.synergy-inactive { opacity: 0.5; }
+.synergy-row.synergy-inactive .synergy-status-icon { color: #6e7681; }
+.synergy-meta { flex: 1; min-width: 0; }
+.synergy-types {
+  display: flex; gap: 6px; flex-wrap: wrap;
+  font-size: 11px;
+  margin-bottom: 2px;
+  align-items: center;
+}
+.synergy-type {
+  display: inline-block;
+  color: #c9d1d9;
+  font-weight: 500;
+}
+.synergy-type.missing {
+  color: #6e7681;
+  text-decoration: line-through;
+}
+.synergy-type.present { color: #e6edf3; }
+.synergy-effect {
+  margin-left: auto;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+.synergy-positive .synergy-effect { color: #7ee787; }
+.synergy-negative .synergy-effect { color: #ff7b72; }
+.synergy-reason {
+  font-size: 10px;
+  color: #8b949e;
+  line-height: 1.4;
+}
+
 /* ── 실천 기록 핀 (사진 박힌 3D 녹색 핀, HTML marker) ── */
 .practice-pin {
   position: relative;
