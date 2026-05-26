@@ -881,12 +881,7 @@ export default function CampusMap({
 
       // pickMode: 위치만 선택 (개인 실천 트랙)
       if (pickModeRef.current) {
-        // 실천 기록 배지 클릭이면 상세 모달 열기
-        const logHits = map.queryRenderedFeatures(e.point, { layers: ['practice-logs-bg', 'practice-logs-icon'] });
-        if (logHits.length > 0) {
-          onLogClickRef.current?.(logHits[0].properties.id);
-          return;
-        }
+        // 실천 기록 핀은 HTML marker 라 별도 click 핸들러가 처리 — 여기선 무시
         let locationName = '캠퍼스 일반 구역';
         const bldHits = map.queryRenderedFeatures(e.point, { layers: ['campus-buildings-3d'] });
         if (bldHits.length > 0) {
@@ -962,81 +957,53 @@ export default function CampusMap({
     else map.once('load', update);
   }, [preinstalledItems, showPreinstalled]);
 
-  // 실천 기록 배지 setup + 동기화 (idempotent)
+  // 실천 기록 — HTML marker 로 렌더 (사진 박힌 3D 핀)
+  const practiceMarkersRef = useRef([]);
   useEffect(() => {
     if (!mapRef.current) return;
     const map = mapRef.current;
 
-    const setupAndUpdate = () => {
-      try {
-        // 소스 없으면 추가
-        if (!map.getSource('practice-logs')) {
-          map.addSource('practice-logs', {
-            type: 'geojson',
-            data: { type: 'FeatureCollection', features: [] },
-          });
-        }
-        // 배경 원 레이어
-        if (!map.getLayer('practice-logs-bg')) {
-          map.addLayer({
-            id: 'practice-logs-bg',
-            type: 'circle',
-            source: 'practice-logs',
-            paint: {
-              'circle-radius': 18,
-              'circle-color': '#ffffff',
-              'circle-stroke-color': '#7ee787',
-              'circle-stroke-width': 2.5,
-              'circle-opacity': 0.95,
-            },
-          });
-          map.on('mouseenter', 'practice-logs-bg', () => { map.getCanvas().style.cursor = 'pointer'; });
-          map.on('mouseleave', 'practice-logs-bg', () => {
-            map.getCanvas().style.cursor = pickModeRef.current ? 'crosshair' : '';
-          });
-        }
-        // 이모지 심볼 레이어
-        if (!map.getLayer('practice-logs-icon')) {
-          map.addLayer({
-            id: 'practice-logs-icon',
-            type: 'symbol',
-            source: 'practice-logs',
-            layout: {
-              'text-field': ['get', 'icon'],
-              'text-size': 22,
-              'text-allow-overlap': true,
-              'text-ignore-placement': true,
-            },
-          });
-        }
-      } catch (e) {
-        console.warn('[practice-logs] setup 실패:', e);
-        return;
-      }
+    const render = () => {
+      // 기존 마커 제거
+      practiceMarkersRef.current.forEach((m) => {
+        try { m.remove(); } catch {}
+      });
+      practiceMarkersRef.current = [];
 
-      const src = map.getSource('practice-logs');
-      if (!src) return;
-      const features = practiceLogs
+      // 새 마커 생성
+      practiceLogs
         .filter((log) => log?.location && typeof log.location.lng === 'number' && typeof log.location.lat === 'number')
-        .map((log) => ({
-          type: 'Feature',
-          properties: {
-            id: log.id,
-            icon: log.icon || '✨',
-            label: log.practiceLabel || '실천',
-            co2: log.co2Saved || 0,
-            locationName: log.location.name || '캠퍼스',
-          },
-          geometry: { type: 'Point', coordinates: [log.location.lng, log.location.lat] },
-        }));
-      src.setData({ type: 'FeatureCollection', features });
+        .forEach((log) => {
+          const el = document.createElement('div');
+          el.className = 'practice-pin';
+          el.title = `${log.icon || '✨'} ${log.practiceLabel || '실천'} (+${log.co2Saved || 0} kgCO₂eq)`;
+          el.innerHTML = `
+            <div class="practice-pin-hole">
+              ${log.photoPreview
+                ? `<img class="practice-pin-photo" src="${log.photoPreview}" alt="" />`
+                : `<span class="practice-pin-emoji">${log.icon || '✨'}</span>`}
+            </div>
+          `;
+          el.addEventListener('click', (e) => {
+            e.stopPropagation();
+            onLogClickRef.current?.(log.id);
+          });
+          const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
+            .setLngLat([log.location.lng, log.location.lat])
+            .addTo(map);
+          practiceMarkersRef.current.push(marker);
+        });
     };
 
-    if (map.isStyleLoaded() && map.getStyle()?.layers) {
-      setupAndUpdate();
-    } else {
-      map.once('load', setupAndUpdate);
-    }
+    if (map.loaded()) render();
+    else map.once('load', render);
+
+    return () => {
+      practiceMarkersRef.current.forEach((m) => {
+        try { m.remove(); } catch {}
+      });
+      practiceMarkersRef.current = [];
+    };
   }, [practiceLogs]);
 
   // pickMode 위치 핀 동기화

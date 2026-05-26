@@ -381,6 +381,52 @@ body { background: #0e1116; color: #e6edf3; }
   flex-shrink: 0;
 }
 
+/* ── 실천 기록 핀 (사진 박힌 3D 녹색 핀, HTML marker) ── */
+.practice-pin {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  background: linear-gradient(135deg, #1a9442 0%, #2ea043 45%, #56d364 100%);
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.4),
+    inset -2px -2px 6px rgba(0, 0, 0, 0.25),
+    inset 2px 2px 4px rgba(255, 255, 255, 0.2);
+  cursor: pointer;
+  transition: transform .15s, filter .15s;
+}
+.practice-pin:hover {
+  filter: brightness(1.1);
+  transform: rotate(-45deg) scale(1.08);
+  z-index: 10;
+}
+.practice-pin-hole {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #ffffff;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: rotate(45deg); /* 핀 -45° 회전 상쇄 */
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+.practice-pin-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.practice-pin-emoji {
+  font-size: 22px;
+  line-height: 1;
+}
+
 /* ── 실천 기록 상세 모달 (네이버 리뷰 스타일) ── */
 .practice-log-modal {
   width: min(440px, 100%);
