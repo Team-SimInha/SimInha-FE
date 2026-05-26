@@ -975,14 +975,17 @@ export default function CampusMap({
         .filter((log) => log?.location && typeof log.location.lng === 'number' && typeof log.location.lat === 'number')
         .forEach((log) => {
           const el = document.createElement('div');
-          el.className = 'practice-pin';
-          el.title = `${log.icon || '✨'} ${log.practiceLabel || '실천'} (+${log.co2Saved || 0} kgCO₂eq)`;
+          const isCounter = (Number(log.co2Saved) || 0) < 0;
+          el.className = 'practice-pin' + (isCounter ? ' practice-pin-counter' : '');
+          const signedCo2 = (Number(log.co2Saved) || 0).toFixed(2);
+          el.title = `${log.icon || '✨'} ${log.practiceLabel || '실천'} (${signedCo2 >= 0 ? '+' : ''}${signedCo2} kgCO₂eq${isCounter ? ' · ⚠️ 역효과' : ''})`;
           el.innerHTML = `
             <div class="practice-pin-hole">
               ${log.photoPreview
                 ? `<img class="practice-pin-photo" src="${log.photoPreview}" alt="" />`
                 : `<span class="practice-pin-emoji">${log.icon || '✨'}</span>`}
             </div>
+            ${isCounter ? '<div class="practice-pin-warning">⚠️</div>' : ''}
           `;
           el.addEventListener('click', (e) => {
             e.stopPropagation();

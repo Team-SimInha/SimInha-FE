@@ -13,6 +13,7 @@ export const PRACTICE_CATEGORIES = [
   { id: 'energy',    label: '에너지',     icon: '💡', color: '#a371f7' },
   { id: 'waste',     label: '자원순환',   icon: '♻️', color: '#56d364' },
   { id: 'water',     label: '물 절약',    icon: '💧', color: '#7ee0e8' },
+  { id: 'counter',   label: '⚠️ 역효과 주의', icon: '⚠️', color: '#f85149' },
 ];
 
 export const PRACTICES = [
@@ -80,6 +81,44 @@ export const PRACTICES = [
     co2PerUnit: 0.02, unit: '회',
     desc: '양치 1회 절수 약 6L, 수처리 전력 환산 약 0.02 kgCO₂eq',
     source: '한국수자원공사 수처리 전력 사용량 자료' },
+
+  // ── ⚠️ 역효과 (친환경이라 생각하지만 LCA 분석 시 실제 배출 증가) ──
+  // 음수 co2PerUnit = 배출 증가량 (절감 X)
+  { id: 'escooter_replace_walk', category: 'counter',
+    label: '전동킥보드/지쿠터 (도보 대체)', icon: '🛴',
+    co2PerUnit: -0.13, unit: '회 (1km)',
+    desc: '캠퍼스 내 도보로 갈 거리(<1km)를 PM 으로 이동 시 +0.13 kgCO₂eq 발생. 제조·배터리·재배치·짧은 수명(1~2년) LCA 포함 — "탔다 = 친환경" 오해 주의',
+    source: 'Hollingsworth, Copeland & Johnson (2019) Environmental Research Letters 14(8) "Are e-scooters polluters?" — 공유 PM 평균 202 gCO₂/mile; 한국교통연구원 「개인형 이동수단 영향분석」 (2021)',
+    counterproductive: true,
+    alternativeNote: '원래 자가용 이용 예정이었다면 절감 효과. 도보·자전거 가능했다면 역효과.',
+  },
+
+  { id: 'tumbler_single_use', category: 'counter',
+    label: '신규 텀블러 단발 사용', icon: '☕',
+    co2PerUnit: -1.5, unit: '개 (20회 미만)',
+    desc: '텀블러 제조 LCA ~1.5 kgCO₂eq. 일회용 종이컵 대비 손익분기점은 약 20~30회 사용. 단발 구매·미사용 시 일회용컵보다 손해',
+    source: 'WSP Sweden (2010) "Comparative LCA of various Cup Systems for Selling Drinks"; UK DEFRA Reusable Cup Study (2010); 환경부 「녹색소비 LCA 가이드」',
+    counterproductive: true,
+    alternativeNote: '20회 이상 꾸준히 쓰면 명백한 절감. 기존 텀블러 활용 > 신규 구매.',
+  },
+
+  { id: 'unnecessary_print', category: 'counter',
+    label: '불필요한 이메일·자료 출력', icon: '📄',
+    co2PerUnit: -0.025, unit: 'A4 5매',
+    desc: '디지털로 충분한 문서를 출력 후 폐기 시 +0.025 kgCO₂eq. 종이 제조(목재→펄프→표백→운송) + 잉크 + 폐기 LCA 합산',
+    source: '한국제지연합회 「종이 LCA 자료」; US EPA Sustainable Materials Management — Paper Products; IPCC AR6 WG3 산업 부문',
+    counterproductive: true,
+    alternativeNote: '서명·제출 필수 문서만 출력, 단순 검토·보존은 PDF 권장.',
+  },
+
+  { id: 'food_waste_general', category: 'counter',
+    label: '음식물쓰레기 일반쓰레기로 배출', icon: '🗑',
+    co2PerUnit: -0.6, unit: '회 (1끼 음식물)',
+    desc: '분리수거 미준수 시 소각·매립 처리 → 메탄 발생 + 처리 에너지 추가로 +0.6 kgCO₂eq. 정상 분리수거 대비 손해',
+    source: '환경부 「음식물쓰레기 처리 시 온실가스 배출 분석」; 환경부 「자원순환 통계」 (2022)',
+    counterproductive: true,
+    alternativeNote: '음식물 분리수거함에 배출 시 사료·퇴비화로 감축 가능.',
+  },
 ];
 
 export const PRACTICE_MAP = Object.fromEntries(PRACTICES.map((p) => [p.id, p]));

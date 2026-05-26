@@ -426,6 +426,61 @@ body { background: #0e1116; color: #e6edf3; }
   font-size: 22px;
   line-height: 1;
 }
+.practice-pin.practice-pin-counter {
+  background: linear-gradient(135deg, #b32626 0%, #da3633 45%, #f85149 100%);
+  box-shadow:
+    0 4px 12px rgba(180, 0, 0, 0.5),
+    inset -2px -2px 6px rgba(0, 0, 0, 0.25),
+    inset 2px 2px 4px rgba(255, 255, 255, 0.2);
+}
+.practice-pin.practice-pin-counter .practice-pin-hole {
+  background: #fff5f5;
+}
+.practice-pin-warning {
+  position: absolute;
+  top: -6px; right: -6px;
+  width: 22px; height: 22px;
+  background: #f85149;
+  color: white;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px;
+  border: 2px solid #fff;
+  transform: rotate(45deg); /* 핀 회전 상쇄 */
+  box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
+/* ── 역효과 활동 카드/리스트 스타일 ── */
+.practice-item-counter,
+.palette-item.counter-warn {
+  border-color: #f8514944 !important;
+  background: #2d1418 !important;
+}
+.practice-item-counter .label,
+.palette-item.counter-warn .label {
+  color: #ff7b72 !important;
+}
+.practice-log-entry-counter {
+  border-color: #f8514966 !important;
+  background: #2d1418 !important;
+}
+.counter-warning-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  background: #f85149;
+  color: white;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  margin-left: 4px;
+}
+.ai-detected-card.ai-detected-counter {
+  background: linear-gradient(135deg, #2d1418, #3d1820);
+  border: 1px solid #f85149;
+}
+.ai-detected-card.ai-detected-counter .ai-detected-icon {
+  filter: drop-shadow(0 0 8px rgba(248, 81, 73, 0.4));
+}
 
 /* ── 실천 기록 상세 모달 (네이버 리뷰 스타일) ── */
 .practice-log-modal {
