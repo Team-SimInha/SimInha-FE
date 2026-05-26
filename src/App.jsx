@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Palette from './Palette.jsx';
 import CampusMap from './Map.jsx';
 import PersonalTrack from './PersonalTrack.jsx';
-import { DEFAULT_BUDGET, ITEM_MAP, REFERENCE_SOURCES } from './items.js';
+import { DEFAULT_BUDGET, ITEM_MAP, REFERENCE_SOURCES, COST_TRANSPARENCY_NOTE } from './items.js';
 import { checkPlacement } from './zones.js';
 import { calculateDashboardMetrics } from './penalties.js';
 import { BASE_YEAR, getEffectiveCost } from './costForecast.js';
@@ -324,7 +324,15 @@ function SourcesModal({ onClose }) {
         <ul style={{ marginTop: 14, paddingLeft: 22, color: '#c9d1d9', lineHeight: 1.8, fontSize: 13 }}>
           {REFERENCE_SOURCES.map((src) => <li key={src}>{src}</li>)}
         </ul>
-        <p style={{ color: '#f2cc60', fontSize: 12, marginTop: 16 }}>
+        <div style={{
+          marginTop: 16, padding: '10px 12px',
+          background: '#0d1117', border: '1px dashed #f2cc6066', borderRadius: 6,
+          color: '#c9d1d9', fontSize: 12, lineHeight: 1.6,
+        }}>
+          <strong style={{ color: '#f2cc60' }}>⚠️ 단가 정확도 안내</strong><br />
+          {COST_TRANSPARENCY_NOTE}
+        </div>
+        <p style={{ color: '#f2cc60', fontSize: 12, marginTop: 12 }}>
           ⚠️ 인하대 실데이터(시설팀·ESG 추진단 협조) 확보 후 1차 보정 예정 (확장 로드맵 참조).
         </p>
       </div>

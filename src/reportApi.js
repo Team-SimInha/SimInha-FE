@@ -1,4 +1,4 @@
-import { ITEM_SOURCE_INDEX, REFERENCE_SOURCES } from './items.js';
+import { ITEM_SOURCE_INDEX, REFERENCE_SOURCES, COST_TRANSPARENCY_NOTE } from './items.js';
 
 function formatKg(value) {
   return `${Math.round(value || 0).toLocaleString()} kgCO2/년`;
@@ -355,6 +355,8 @@ export function composeFixedMarkdown(report = {}, context = {}) {
     '## 7. 참고 출처',
     '',
     '본 시뮬레이션의 모든 감축계수·단가는 아래 공인 가이드라인 기반 추정치입니다. 임의 수치는 사용하지 않았으며, 인하대 실측 데이터 확보 시 보정 예정입니다.',
+    '',
+    `> ⚠️ **단가 정확도**: ${COST_TRANSPARENCY_NOTE}`,
     '',
     ...buildUsedSources(context.reportItems || []),
     '',

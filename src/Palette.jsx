@@ -1,4 +1,4 @@
-import { ITEM_TYPES, GROUPS } from './items.js';
+import { ITEM_TYPES, GROUPS, COST_TRANSPARENCY_NOTE } from './items.js';
 
 function formatKrw(value) {
   if (value >= 100000000) return `${(value / 100000000).toFixed(1)}억원`;
@@ -53,6 +53,14 @@ export default function Palette({
       <p style={{ fontSize: 10, color: '#6e7681', margin: '4px 0 0', lineHeight: 1.4 }}>
         선택한 연도의 학습곡선 기반 단가 예측치가 자동 적용됩니다 (IEA·IRENA·BNEF·KEEI).
       </p>
+
+      <div style={{
+        margin: '8px 0 10px', padding: '8px 10px',
+        background: '#0d1117', border: '1px dashed #f2cc6066', borderRadius: 6,
+        fontSize: 10, color: '#c9d1d9', lineHeight: 1.5,
+      }}>
+        ⚠️ {COST_TRANSPARENCY_NOTE}
+      </div>
 
       <div className="budget-box">
         <div>

@@ -92,6 +92,17 @@ export const ITEM_TYPES = [
                color: '#3d7a40', topColor: '#56d364', hasPole: true, poleColor: '#5a3a1f', poleHeight: 1.5 } },
 ];
 
+// ─── 단가 정확도 안내 (시설팀 견적 확보 전 한계) ───
+//
+// 본 단가들은 출처 기관의 공개 통계·시장조사·보급사업 보고서 기반의 평균 추정치이며,
+// 페이지 단위 직접 인용이 아닌 통계 범위 내의 평균값을 채택했습니다.
+// 실제 견적은 프로젝트 규모·시점·업체·옵션 사양에 따라 약 ±30% 변동 가능합니다.
+// 정확한 값은 인하대 시설팀 RFP 단가 자료 확보 후 보정 예정 (확장 로드맵 참조).
+export const COST_TRANSPARENCY_NOTE =
+  '본 단가는 출처 기관의 공개 통계·시장조사 기반 평균 추정치입니다. ' +
+  '프로젝트 규모·시점·업체에 따라 실제 견적은 ±30% 변동 가능. ' +
+  '정확 값은 시설팀 RFP 단가 확보 후 보정 예정 (확장 로드맵).';
+
 // ─── 출처 메타데이터 (UI 및 AI 프롬프트용 합본) ───
 export const ITEM_SOURCE_INDEX = ITEM_TYPES.reduce((acc, item) => {
   acc[item.id] = item.source;
