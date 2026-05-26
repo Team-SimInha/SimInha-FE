@@ -3,7 +3,6 @@ import Palette from './Palette.jsx';
 import CampusMap from './Map.jsx';
 import Leaderboard from './Leaderboard.jsx';
 import PersonalTrack from './PersonalTrack.jsx';
-import RoadmapPage from './RoadmapPage.jsx';
 import { DEFAULT_BUDGET, ITEM_MAP, REFERENCE_SOURCES } from './items.js';
 import { checkPlacement } from './zones.js';
 import { calculateDashboardMetrics } from './penalties.js';
@@ -626,20 +625,12 @@ export default function App() {
           className={'track-tab' + (mode === 'personal' ? ' active' : '')}
           onClick={() => setMode('personal')}
         >
-          🌱 개인 실천 (데모)
-        </button>
-        <button
-          className={'track-tab' + (mode === 'roadmap' ? ' active' : '')}
-          onClick={() => setMode('roadmap')}
-        >
-          🚧 확장 로드맵
+          🌱 개인 실천 기록
         </button>
       </header>
 
       {mode === 'personal' ? (
         <PersonalTrack />
-      ) : mode === 'roadmap' ? (
-        <RoadmapPage />
       ) : (
         <div className="app">
       <Palette
