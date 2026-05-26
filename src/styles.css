@@ -594,6 +594,52 @@ body { background: #0e1116; color: #e6edf3; }
   white-space: pre-wrap;
 }
 
+/* ── 사이드바 / 좌측 컬럼 (Palette + Synergy) ── */
+.left-col {
+  display: flex; flex-direction: column;
+  background: #161b22;
+  border-right: 1px solid #30363d;
+  min-height: 0;
+  overflow: hidden;
+}
+.left-col .sidebar {
+  flex: 1; min-height: 0;
+  border-right: none;
+}
+.synergy-stack-section {
+  flex-shrink: 0;
+  max-height: 32vh;
+  overflow-y: auto;
+  border-top: 1px solid #30363d;
+  background: #0d1117;
+  padding: 12px 16px;
+}
+.synergy-stack-section .scenario-panel {
+  border-bottom: none;
+  padding-bottom: 4px;
+}
+.synergy-stack-section .synergy-list { max-height: none; }
+
+/* 정책 트랙 — 대시보드가 우측 패널로 이동했을 때 세로 스택 + position static */
+.right-panel .dashboard {
+  position: static;
+  width: 100%;
+  grid-template-columns: 1fr;
+  z-index: auto;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #30363d;
+}
+.right-panel .dashboard-breakdown { grid-template-columns: 1fr; gap: 0; }
+.detail-panel-inline {
+  position: static;
+  max-width: none;
+  max-height: 220px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid #30363d;
+  border-radius: 8px;
+}
+
 /* ── 사이드바 ── */
 .sidebar { background: #161b22; border-right: 1px solid #30363d; padding: 16px; overflow-y: auto; }
 .sidebar h2 { margin: 0 0 12px; font-size: 16px; color: #7ee787; }

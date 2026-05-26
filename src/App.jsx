@@ -728,19 +728,24 @@ export default function App() {
         <PersonalTrack />
       ) : (
         <div className="app">
-      <Palette
-        selected={selectedType}
-        onSelect={setSelectedType}
-        nickname={nickname}
-        onNickname={setNickname}
-        budget={metrics.budget}
-        usedBudget={metrics.usedBudget}
-        remainingBudget={metrics.remainingBudget}
-        canAffordItem={canAffordItem}
-        designYear={designYear}
-        onDesignYear={setDesignYear}
-        effectiveCostOf={effectiveCostOf}
-      />
+      <div className="left-col">
+        <Palette
+          selected={selectedType}
+          onSelect={setSelectedType}
+          nickname={nickname}
+          onNickname={setNickname}
+          budget={metrics.budget}
+          usedBudget={metrics.usedBudget}
+          remainingBudget={metrics.remainingBudget}
+          canAffordItem={canAffordItem}
+          designYear={designYear}
+          onDesignYear={setDesignYear}
+          effectiveCostOf={effectiveCostOf}
+        />
+        <div className="synergy-stack-section">
+          <SynergyStatusPanel items={items} />
+        </div>
+      </div>
 
       <div className="map-wrap">
         <CampusMap
@@ -752,24 +757,6 @@ export default function App() {
           onPlace={handlePlace}
           onRemove={handleRemove}
         />
-
-        <Dashboard
-          metrics={metrics}
-          itemCount={items.length}
-          showDetail={showDetail}
-          onToggleDetail={() => setShowDetail(!showDetail)}
-        />
-
-        {showDetail && (calc.details.length > 0 || calc.warnings.length > 0) && (
-          <div className="detail-panel">
-            {calc.warnings.map((w, i) => (
-              <div key={'w' + i} className="detail-warn">{w}</div>
-            ))}
-            {calc.details.map((d, i) => (
-              <div key={'d' + i} className="detail-item">{d}</div>
-            ))}
-          </div>
-        )}
 
         <div className="controls">
           <div className="left">
@@ -809,6 +796,22 @@ export default function App() {
       </div>
 
       <aside className="right-panel">
+        <Dashboard
+          metrics={metrics}
+          itemCount={items.length}
+          showDetail={showDetail}
+          onToggleDetail={() => setShowDetail(!showDetail)}
+        />
+        {showDetail && (calc.details.length > 0 || calc.warnings.length > 0) && (
+          <div className="detail-panel detail-panel-inline">
+            {calc.warnings.map((w, i) => (
+              <div key={'w' + i} className="detail-warn">{w}</div>
+            ))}
+            {calc.details.map((d, i) => (
+              <div key={'d' + i} className="detail-item">{d}</div>
+            ))}
+          </div>
+        )}
         <ScenarioPanel
           scenarios={scenarios}
           activeScenarioId={activeScenarioId}
@@ -817,7 +820,6 @@ export default function App() {
           onRename={handleRenameScenario}
           onDelete={handleDeleteScenario}
         />
-        <SynergyStatusPanel items={items} />
       </aside>
 
       {reportOpen && (
