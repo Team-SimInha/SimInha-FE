@@ -554,15 +554,40 @@ export function polygonAreaSquareMeters(polygon) {
   return Math.abs(area) / 2;
 }
 
-// 옥상 가용면적 = 건물 footprint × (1 - 공조설비/통로 reserve ratio)
-// 공조설비(실외기·옥상저수조·승강기 기계실·소방 통로) 평균 30% 점유 가정
-export const ROOFTOP_RESERVE_RATIO = 0.30;
+// 건물 유형별 옥상 공조·승강로·통로 점유율 (1 - ratio = 실제 가용면적 비율)
+//
+// ── 근거 ──
+// (a) 건축법 시행령 §119: 옥탑·승강기탑·계단탑 ≤ 건축면적의 1/8 (=12.5%) 까지 건축면적 제외
+// (b) 한국에너지공단 「태양광발전 설치 가이드」: 옥상 가용면적 = 전체 × (1 − 음영·통로·기타설비율). 통로·기타 0.20~0.40
+// (c) 소방기본법 시행규칙 §7: 옥상 피난·활동공간 별도 확보
+// (d) 한국건설기술연구원 「옥상녹화 적용가능면적 산정 사례」: 노후 ~30%, 신축 ~15% 설비 점유
+// (e) 의료기관 시설기준규칙: 24시간 공조 + 응급가스·헬리포트 통로 확보
+export const ROOFTOP_RESERVE_BY_TYPE = {
+  old_building:   { ratio: 0.35, note: '노후 건물 — 산재된 실외기·옥상 물탱크·통신탑, 통합 기계실 없음 (근거 a+b+d)' },
+  new_building:   { ratio: 0.20, note: '신축 건물 — 통합 기계실, 가용면적 양호 (근거 a+b+d)' },
+  solar_building: { ratio: 0.25, note: '기존 태양광 설치 건물 — 추가 공간 일부 제한 (근거 b)' },
+  hospital:       { ratio: 0.40, note: '의료시설 — 24시간 공조 + 응급가스 라인 + 헬리포트 통로 (근거 a+c+e)' },
+  auxiliary:      { ratio: 0.25, note: '부속 건물 — 평균치 (근거 b+d)' },
+};
+export const ROOFTOP_RESERVE_RATIO_DEFAULT = 0.30;
 const BUILDING_TYPES_FOR_ROOFTOP = ['old_building', 'new_building', 'solar_building', 'hospital', 'auxiliary'];
+
+// 호환성: 기존 ROOFTOP_RESERVE_RATIO 참조 코드 보존용 (deprecated, 기본값만 노출)
+export const ROOFTOP_RESERVE_RATIO = ROOFTOP_RESERVE_RATIO_DEFAULT;
+
+export function getRooftopReserveByZone(zoneId) {
+  const zone = CAMPUS_ZONES.find((z) => z.id === zoneId);
+  if (!zone) return { ratio: ROOFTOP_RESERVE_RATIO_DEFAULT, note: '미지정', type: null };
+  const entry = ROOFTOP_RESERVE_BY_TYPE[zone.type];
+  if (!entry) return { ratio: ROOFTOP_RESERVE_RATIO_DEFAULT, note: '유형 미정의', type: zone.type };
+  return { ...entry, type: zone.type };
+}
 
 export function buildingRooftopAvailableArea(zoneId) {
   const zone = CAMPUS_ZONES.find((z) => z.id === zoneId);
   if (!zone || !BUILDING_TYPES_FOR_ROOFTOP.includes(zone.type)) return 0;
-  return polygonAreaSquareMeters(zone.polygon) * (1 - ROOFTOP_RESERVE_RATIO);
+  const { ratio } = getRooftopReserveByZone(zoneId);
+  return polygonAreaSquareMeters(zone.polygon) * (1 - ratio);
 }
 
 export function getBuildingZone(zoneId) {
