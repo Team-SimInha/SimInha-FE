@@ -9,7 +9,7 @@
  */
 
 import { DEFAULT_BUDGET, ITEM_MAP } from './items.js';
-import { buildingRooftopAvailableArea, getBuildingZone, getRooftopReserveByZone } from './zones.js';
+import { buildingRooftopAvailableArea, getBuildingZone, getBuildingRooftopFixtures, getRooftopReserveByZone } from './zones.js';
 
 const MILLION_KRW = 1000000;
 
@@ -387,6 +387,7 @@ export function calculateRealistic(items) {
     if (!zone) continue;
     if (!rooftopUsageByZone[item.zoneId]) {
       const reserve = getRooftopReserveByZone(item.zoneId);
+      const fixtures = getBuildingRooftopFixtures(item.zoneId);
       rooftopUsageByZone[item.zoneId] = {
         zoneName: zone.name || item.zoneId,
         zoneType: zone.type,
@@ -394,6 +395,9 @@ export function calculateRealistic(items) {
         available: buildingRooftopAvailableArea(item.zoneId),
         reserveRatio: reserve.ratio,
         reserveNote: reserve.note,
+        fixtureAreaM2: fixtures.areaM2,
+        fixtures: fixtures.fixtures,
+        fixturesSource: fixtures.source,
         items: [],
       };
     }
@@ -411,13 +415,16 @@ export function calculateRealistic(items) {
     if (r.available <= 0) continue;
     const ratio = r.usage / r.available;
     const reservePct = Math.round((r.reserveRatio || 0.3) * 100);
+    const fixtureNote = r.fixtureAreaM2 > 0
+      ? ` + 항공사진 fixture ${Math.round(r.fixtureAreaM2)}㎡ (${(r.fixtures || []).map((f) => f.label).join('·')})`
+      : '';
     if (ratio > 1.0) {
       warnings.push(
-        `⚠️ ${r.zoneName} 옥상 면적 초과: ${Math.round(r.usage).toLocaleString()}㎡ 필요 vs ${Math.round(r.available).toLocaleString()}㎡ 가용 (${r.zoneType} 기준 reserve ${reservePct}% 적용 — ${r.reserveNote})`
+        `⚠️ ${r.zoneName} 옥상 면적 초과: ${Math.round(r.usage).toLocaleString()}㎡ 필요 vs ${Math.round(r.available).toLocaleString()}㎡ 가용 (${r.zoneType} 기준 reserve ${reservePct}% — ${r.reserveNote}${fixtureNote})`
       );
     } else if (ratio > 0.85) {
       details.push(
-        `🏢 ${r.zoneName} 옥상 사용률 ${Math.round(ratio * 100)}% (${Math.round(r.usage).toLocaleString()}/${Math.round(r.available).toLocaleString()}㎡, reserve ${reservePct}%) — 추가 설치 시 공조설비 충돌 위험`
+        `🏢 ${r.zoneName} 옥상 사용률 ${Math.round(ratio * 100)}% (${Math.round(r.usage).toLocaleString()}/${Math.round(r.available).toLocaleString()}㎡, reserve ${reservePct}%${fixtureNote}) — 추가 설치 시 공조설비 충돌 위험`
       );
     }
   }

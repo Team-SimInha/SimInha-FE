@@ -5,6 +5,7 @@
  * 인경호·도로·주차장·운동장은 실제 캠퍼스 레이아웃에 맞춰 배치.
  */
 import { INHA_BUILDINGS } from './inha_buildings.js';
+import { BUILDING_ROOFTOP_FIXTURES } from './preinstalled.js';
 
 // ─── 구역 유형 ───
 // old_building   : 1970~80년대 노후 건물 (구조하중 부족)
@@ -583,11 +584,23 @@ export function getRooftopReserveByZone(zoneId) {
   return { ...entry, type: zone.type };
 }
 
+// 항공사진에 보이는 명시적 옥상 설비(실외기·물탱크·헬리포트 등) 점유면적
+// generic reserve 와 별도로 BUILDING_ROOFTOP_FIXTURES 에서 차감
+export function getBuildingRooftopFixtures(zoneId) {
+  const entry = BUILDING_ROOFTOP_FIXTURES.find((b) => b.buildingId === zoneId);
+  if (!entry) return { areaM2: 0, fixtures: [], source: null };
+  const areaM2 = entry.fixtures.reduce((s, f) => s + (Number(f.areaM2) || 0), 0);
+  return { areaM2, fixtures: entry.fixtures, source: entry.source, name: entry.name };
+}
+
 export function buildingRooftopAvailableArea(zoneId) {
   const zone = CAMPUS_ZONES.find((z) => z.id === zoneId);
   if (!zone || !BUILDING_TYPES_FOR_ROOFTOP.includes(zone.type)) return 0;
   const { ratio } = getRooftopReserveByZone(zoneId);
-  return polygonAreaSquareMeters(zone.polygon) * (1 - ratio);
+  const totalArea = polygonAreaSquareMeters(zone.polygon);
+  const reserveArea = totalArea * ratio;
+  const fixtureArea = getBuildingRooftopFixtures(zoneId).areaM2;
+  return Math.max(0, totalArea - reserveArea - fixtureArea);
 }
 
 export function getBuildingZone(zoneId) {

@@ -382,14 +382,19 @@ function buildConstraintSection(constraintSignals) {
       }
     }
     if (rooftopUsage.length > 0) {
-      lines.push('- **옥상 가용면적 (건물 유형별 공조·통로 점유율 차등 적용)**:');
-      lines.push('  근거: 건축법 §119, 한국에너지공단 태양광 가이드, 소방기본법 §7, 한국건설기술연구원 옥상녹화 사례');
+      lines.push('- **옥상 가용면적 (건물 유형별 reserve + 항공사진 명시 fixture 차감)**:');
+      lines.push('  근거: 건축법 §119, 한국에너지공단 태양광 가이드, 소방기본법 §7, 한국건설기술연구원 옥상녹화 사례, 카카오맵·네이버·구글 어스 공개 항공사진');
       for (const r of rooftopUsage.slice(0, 8)) {
         const ratio = r.available > 0 ? Math.round((r.usage / r.available) * 100) : 0;
         const reservePct = r.reserveRatio ? Math.round(r.reserveRatio * 100) : 30;
         const flag = ratio > 100 ? ' ❌ 초과' : ratio >= 85 ? ' ⚠️ 임박' : '';
         lines.push(`  - ${r.zoneName}: ${Math.round(r.usage).toLocaleString()}/${Math.round(r.available).toLocaleString()}㎡ (사용률 ${ratio}%, reserve ${reservePct}%)${flag}`);
-        if (r.reserveNote) lines.push(`    · ${r.reserveNote}`);
+        if (r.reserveNote) lines.push(`    · 유형 근거: ${r.reserveNote}`);
+        if (r.fixtureAreaM2 > 0) {
+          const fxList = (r.fixtures || []).map((f) => `${f.label} ${Math.round(f.areaM2)}㎡`).join(', ');
+          lines.push(`    · 항공사진 명시 fixture: ${fxList} (합계 ${Math.round(r.fixtureAreaM2)}㎡)`);
+          if (r.fixturesSource) lines.push(`    · fixture 출처: ${r.fixturesSource}`);
+        }
       }
     }
     if (doubleGuards.length > 0) {

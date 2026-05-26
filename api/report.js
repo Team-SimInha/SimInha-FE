@@ -99,6 +99,11 @@ function compactConstraints(metrics) {
         utilizationPct: r.available > 0 ? Math.round((number(r.usage) / number(r.available)) * 100) : 0,
         reservePct: r.reserveRatio ? Math.round(r.reserveRatio * 100) : 30,
         reserveNote: r.reserveNote || '',
+        fixtureAreaM2: Math.round(number(r.fixtureAreaM2 || 0)),
+        fixtures: Array.isArray(r.fixtures) ? r.fixtures.slice(0, 6).map((f) => ({
+          type: f.type, label: f.label, areaM2: Math.round(number(f.areaM2 || 0)),
+        })) : [],
+        fixturesSource: r.fixturesSource || '',
         items: Array.isArray(r.items) ? r.items.slice(0, 5) : [],
       }))
       : [],
@@ -217,7 +222,7 @@ function promptFor(input) {
     '',
     '제약 / 트레이드오프 / 밀집도 규칙 (constraintSignals 와 densitySummary 활용):',
     '- constraintSignals.greenSacrificePenaltyKgCO2 > 0 이면 녹지 훼손 트레이드오프를 warnings 또는 recommendations 에 반드시 명시한다. greenSacrificeBreakdown 의 zoneName 과 lossKgCO2 를 인용한다.',
-    '- constraintSignals.rooftopUsage 에서 utilizationPct >= 100 인 건물은 옥상 면적 초과로 warnings 에 강하게 언급한다 (각 항목의 reservePct·reserveNote 를 인용해 노후/신축/의료 등 건물 유형별 점유율 차등 근거 [건축법 §119, 한국에너지공단 태양광 가이드, 소방기본법 §7] 를 명시). utilizationPct 85~99 는 주의 수준으로 언급한다.',
+    '- constraintSignals.rooftopUsage 에서 utilizationPct >= 100 인 건물은 옥상 면적 초과로 warnings 에 강하게 언급한다 (각 항목의 reservePct·reserveNote 와 fixtureAreaM2·fixtures 를 인용해 노후/신축/의료 등 건물 유형별 점유율 차등 근거 [건축법 §119, 한국에너지공단 태양광 가이드, 소방기본법 §7] + 항공사진 관찰 fixture[실외기·물탱크·헬리포트 등]를 함께 명시). utilizationPct 85~99 는 주의 수준으로 언급한다.',
     '- constraintSignals.doubleCountGuards 에 항목이 있으면 notes 에 "설치 인프라 효과만 카운트, 사용량/제3자 실적과 합산 금지" 라는 취지를 한 문장으로 포함한다 (특히 부지대여형 태양광, BEMS-LED 시너지).',
     '- constraintSignals.embodiedPenaltyKgCO2 와 diminishingPenaltyKgCO2 가 grossSaving 의 25% 를 넘으면 warnings 에 "설치 탄소·수확체감으로 인한 효과 감쇄" 를 명시한다.',
     '- densitySummary 의 상위 zoneName 1~2 곳을 인용해 배치 밀집·분산 패턴을 strengths 또는 recommendations 에 반영한다.',
