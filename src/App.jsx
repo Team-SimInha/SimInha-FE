@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Palette from './Palette.jsx';
 import CampusMap from './Map.jsx';
-import Leaderboard from './Leaderboard.jsx';
 import PersonalTrack from './PersonalTrack.jsx';
 import { DEFAULT_BUDGET, ITEM_MAP, REFERENCE_SOURCES } from './items.js';
 import { checkPlacement } from './zones.js';
 import { calculateDashboardMetrics } from './penalties.js';
 import { PREINSTALLED_ITEMS, PREINSTALLED_NOTE } from './preinstalled.js';
-import { deleteScenario, loadScenarios, renameScenario, saveLeaderboardEntry, saveScenario } from './storage.js';
+import { deleteScenario, loadScenarios, renameScenario, saveScenario } from './storage.js';
 import { buildReportMarkdown, requestScenarioReport } from './reportApi.js';
 
 const ONBOARDING_KEY = 'inha-carbon-sim.onboarding.v1';
@@ -419,7 +418,6 @@ export default function App() {
   const [nickname, setNickname] = useState('');
   const [selectedType, setSelectedType] = useState(null);
   const [items, setItems] = useState([]);
-  const [refreshKey, setRefreshKey] = useState(0);
   const [toast, setToast] = useState(null);
   const [showDetail, setShowDetail] = useState(false);
   const [showPreinstalled, setShowPreinstalled] = useState(true);
@@ -597,19 +595,6 @@ export default function App() {
     setShowOnboarding(false);
   };
 
-  const handleSubmit = async () => {
-    if (items.length === 0) return showToast('최소 1개 이상 배치하세요', 'error');
-    const submitNickname = nickname.trim() || '익명';
-
-    const entry = saveLeaderboardEntry({
-      nickname: submitNickname,
-      items,
-      metrics: metricSnapshot(metrics),
-    });
-    showToast(`🎉 ${submitNickname} · ${(entry.total_saving / 1000).toFixed(2)}t CO₂ 로컬 리더보드 등록!`);
-    setRefreshKey((k) => k + 1);
-  };
-
   const calc = metrics.total;
 
   return (
@@ -703,13 +688,6 @@ export default function App() {
             <button className="secondary" onClick={() => { setTourStep(0); setShowOnboarding(true); }}>
               가이드
             </button>
-            <button
-              onClick={handleSubmit}
-              disabled={!items.length}
-              title={!items.length ? '지도에 설비를 1개 이상 배치하면 제출할 수 있습니다' : '현재 시나리오를 로컬 리더보드에 등록합니다'}
-            >
-              리더보드 제출
-            </button>
           </div>
         </div>
 
@@ -726,7 +704,6 @@ export default function App() {
           onRename={handleRenameScenario}
           onDelete={handleDeleteScenario}
         />
-        <Leaderboard refreshKey={refreshKey} />
       </aside>
 
       {reportOpen && (

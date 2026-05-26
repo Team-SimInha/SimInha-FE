@@ -1,8 +1,35 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import CampusMap from './Map.jsx';
 import { PRACTICES, PRACTICE_CATEGORIES, PRACTICE_MAP } from './practices.js';
 import { classifyPractice } from './practiceClassifier.js';
-import { deletePracticeLog, loadPracticeLogs, savePracticeLog } from './storage.js';
+import { deletePracticeLog, loadPersonalLeaderboard, loadPracticeLogs, savePersonalLeaderboardEntry, savePracticeLog } from './storage.js';
+
+function PersonalLeaderboardPanel({ refreshKey }) {
+  const [entries, setEntries] = useState([]);
+  useEffect(() => { setEntries(loadPersonalLeaderboard()); }, [refreshKey]);
+  const rankClass = (r) => (r === 1 ? 'gold' : r === 2 ? 'silver' : r === 3 ? 'bronze' : '');
+  return (
+    <section className="scenario-panel" style={{ borderBottom: 'none' }}>
+      <div className="panel-title-row">
+        <h2 style={{ color: '#ffd33d' }}>🏆 개인 실천 리더보드</h2>
+      </div>
+      {entries.length === 0 && <div className="empty compact">아직 등록된 실천 기록이 없습니다</div>}
+      {entries.map((e) => (
+        <div key={e.id} className="entry">
+          <div className={'rank ' + rankClass(e.rank)}>#{e.rank}</div>
+          <div>
+            <div className="nick">{e.nickname}</div>
+            <div className="meta">
+              {e.practice_count}건 인증 · {e.created_at.slice(0, 10)}
+              {e.categories?.length ? ` · ${e.categories.slice(0, 3).join('/')}` : ''}
+            </div>
+          </div>
+          <div className="score">{e.total_saved_kg.toFixed(2)}<span style={{ fontSize: 10, color: '#8b949e' }}>kg</span></div>
+        </div>
+      ))}
+    </section>
+  );
+}
 
 function formatDateTime(iso) {
   try {
@@ -167,6 +194,8 @@ export default function PersonalTrack() {
   const [selectedLog, setSelectedLog] = useState(null);
   const [analysisResult, setAnalysisResult] = useState(null);
   const [cameraPreset, setCameraPreset] = useState('iso');
+  const [nickname, setNickname] = useState('');
+  const [leaderboardRefresh, setLeaderboardRefresh] = useState(0);
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
@@ -246,6 +275,20 @@ export default function PersonalTrack() {
   };
 
   const totalSaved = logs.reduce((s, e) => s + (e.co2Saved || 0), 0);
+
+  const handleLeaderboardSubmit = () => {
+    if (logs.length === 0) return showToast('인증한 실천이 없습니다', 'error');
+    const submitNickname = nickname.trim() || '익명';
+    const categories = [...new Set(logs.map((l) => l.category).filter(Boolean))];
+    savePersonalLeaderboardEntry({
+      nickname: submitNickname,
+      totalSavedKg: totalSaved,
+      practiceCount: logs.length,
+      categories,
+    });
+    setLeaderboardRefresh((k) => k + 1);
+    showToast(`🏆 ${submitNickname} · ${totalSaved.toFixed(2)} kgCO₂eq 리더보드 등록!`);
+  };
 
   return (
     <div className="app">
@@ -409,12 +452,12 @@ export default function PersonalTrack() {
           </div>
         </section>
 
-        <section className="scenario-panel" style={{ borderBottom: 'none' }}>
+        <section className="scenario-panel">
           <div className="panel-title-row">
             <h2>최근 기록 ({logs.length})</h2>
           </div>
           {logs.length === 0 && <div className="empty compact">아직 기록이 없습니다</div>}
-          {logs.slice(0, 8).map((entry) => (
+          {logs.slice(0, 6).map((entry) => (
             <div
               key={entry.id}
               className="practice-log-entry"
@@ -431,6 +474,29 @@ export default function PersonalTrack() {
             </div>
           ))}
         </section>
+
+        <section className="scenario-panel">
+          <div className="panel-title-row">
+            <h2>리더보드 제출</h2>
+          </div>
+          <input
+            type="text"
+            placeholder="닉네임 (선택)"
+            value={nickname}
+            maxLength={20}
+            onChange={(e) => setNickname(e.target.value)}
+          />
+          <button
+            style={{ width: '100%', marginTop: 10 }}
+            onClick={handleLeaderboardSubmit}
+            disabled={!logs.length}
+            title={!logs.length ? '실천을 1개 이상 등록하면 제출 가능' : `누적 ${totalSaved.toFixed(2)} kgCO₂eq로 리더보드 등록`}
+          >
+            🏆 누적 {totalSaved.toFixed(2)} kg · 리더보드 등록
+          </button>
+        </section>
+
+        <PersonalLeaderboardPanel refreshKey={leaderboardRefresh} />
       </aside>
 
       <LogDetailModal log={selectedLog} onClose={() => setSelectedLog(null)} onDelete={handleDeleteLog} />

@@ -1,6 +1,7 @@
 const STORAGE_KEY = 'inha-carbon-sim.scenarios.v1';
 const LEADERBOARD_KEY = 'inha-carbon-sim.leaderboard.v1';
 const PRACTICE_LOG_KEY = 'inha-carbon-sim.practice-logs.v1';
+const PERSONAL_LEADERBOARD_KEY = 'inha-carbon-sim.personal-leaderboard.v1';
 
 function nowIso() {
   return new Date().toISOString();
@@ -152,5 +153,32 @@ export function saveLeaderboardEntry({ nickname, items, metrics }) {
   };
   entries.push(entry);
   writeList(LEADERBOARD_KEY, entries);
+  return entry;
+}
+
+// ─── 개인 실천 리더보드 ───
+export function loadPersonalLeaderboard(limit = 20) {
+  return readList(PERSONAL_LEADERBOARD_KEY)
+    .sort((a, b) => {
+      const scoreDiff = Number(b.total_saved_kg || 0) - Number(a.total_saved_kg || 0);
+      if (scoreDiff) return scoreDiff;
+      return String(b.created_at).localeCompare(String(a.created_at));
+    })
+    .slice(0, limit)
+    .map((entry, index) => ({ ...entry, rank: index + 1 }));
+}
+
+export function savePersonalLeaderboardEntry({ nickname, totalSavedKg, practiceCount, categories }) {
+  const entries = readList(PERSONAL_LEADERBOARD_KEY);
+  const entry = {
+    id: createId(),
+    nickname: (nickname || '익명').trim(),
+    total_saved_kg: Number(totalSavedKg || 0),
+    practice_count: Number(practiceCount || 0),
+    categories: Array.isArray(categories) ? categories : [],
+    created_at: nowIso(),
+  };
+  entries.push(entry);
+  writeList(PERSONAL_LEADERBOARD_KEY, entries);
   return entry;
 }
