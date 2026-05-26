@@ -6,6 +6,8 @@ function formatKrw(value) {
   return `${value.toLocaleString()}원`;
 }
 
+export const YEAR_OPTIONS = [2026, 2027, 2028, 2030, 2032, 2035, 2040];
+
 export default function Palette({
   selected,
   onSelect,
@@ -15,6 +17,9 @@ export default function Palette({
   usedBudget,
   remainingBudget,
   canAffordItem,
+  designYear,
+  onDesignYear,
+  effectiveCostOf,
 }) {
   return (
     <aside className="sidebar">
@@ -31,6 +36,23 @@ export default function Palette({
         maxLength={20}
         onChange={(e) => onNickname(e.target.value)}
       />
+
+      <h3>적용 연도 <span style={{ fontWeight: 400, textTransform: 'none', color: '#6e7681', fontSize: 10 }}>(1차/2차/3차 시나리오용)</span></h3>
+      <select
+        value={designYear || 2026}
+        onChange={(e) => onDesignYear && onDesignYear(Number(e.target.value))}
+        style={{
+          width: '100%', padding: '8px 10px', background: '#0d1117', color: '#e6edf3',
+          border: '1px solid #30363d', borderRadius: 8, fontSize: 14,
+        }}
+      >
+        {YEAR_OPTIONS.map((y) => (
+          <option key={y} value={y}>{y}년 적용</option>
+        ))}
+      </select>
+      <p style={{ fontSize: 10, color: '#6e7681', margin: '4px 0 0', lineHeight: 1.4 }}>
+        선택한 연도의 학습곡선 기반 단가 예측치가 자동 적용됩니다 (IEA·IRENA·BNEF·KEEI).
+      </p>
 
       <div className="budget-box">
         <div>
@@ -53,6 +75,8 @@ export default function Palette({
           {ITEM_TYPES.filter((it) => it.group === group).map((it) => {
             const canAfford = canAffordItem ? canAffordItem(it.id) : true;
             const disabled = it.coeff === 0 || !canAfford;
+            const adjustedCost = effectiveCostOf ? effectiveCostOf(it.id) : it.cost;
+            const costChanged = adjustedCost !== it.cost;
             return (
               <div
                 key={it.id}
@@ -75,7 +99,12 @@ export default function Palette({
                       : `${it.coeff.toLocaleString()} kgCO₂/년 · ${it.energyKwh.toLocaleString()} kWh`}
                   </div>
                   <div className="item-desc">
-                    {formatKrw(it.cost)} / {it.unit}
+                    {formatKrw(adjustedCost)} / {it.unit}
+                    {costChanged && (
+                      <span style={{ color: '#7ee787', marginLeft: 4, fontSize: 9 }}>
+                        ({designYear}년, 원가 {formatKrw(it.cost)})
+                      </span>
+                    )}
                     {!canAfford && it.coeff !== 0 ? ' · 예산 초과' : ''}
                   </div>
                   {it.source && (

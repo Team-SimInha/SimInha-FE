@@ -10,6 +10,7 @@
 
 import { DEFAULT_BUDGET, ITEM_MAP } from './items.js';
 import { buildingRooftopAvailableArea, getBuildingZone, getBuildingRooftopFixtures, getRooftopReserveByZone } from './zones.js';
+import { BASE_YEAR, getEffectiveCost } from './costForecast.js';
 
 const MILLION_KRW = 1000000;
 
@@ -27,6 +28,15 @@ function sumItemField(items, field) {
   return items.reduce((sum, item) => {
     const meta = ITEM_MAP[item.type];
     return sum + Number(meta?.[field] ?? 0) * itemQty(item);
+  }, 0);
+}
+
+function sumItemCost(items, year) {
+  return items.reduce((sum, item) => {
+    const meta = ITEM_MAP[item.type];
+    if (!meta) return sum;
+    const unitCost = getEffectiveCost(item.type, year, meta.cost);
+    return sum + unitCost * itemQty(item);
   }, 0);
 }
 
@@ -190,7 +200,8 @@ function dist(a, b) {
  * @param {Array} items — [{ id, type, lng, lat, qty, zoneName, ... }]
  * @returns {{ grossSaving, embodiedPenalty, diminishingPenalty, synergyPenalty, synergyBonus, netSaving, warnings[], details[] }}
  */
-export function calculateRealistic(items) {
+export function calculateRealistic(items, options = {}) {
+  const year = Number(options.year) || BASE_YEAR;
   const warnings = [];
   const details = [];
 
@@ -450,7 +461,7 @@ export function calculateRealistic(items) {
   // ── 최종 합산 ──
   const adjustedSaving = perItem.reduce((s, it) => s + it.adjustedCoeff, 0);
   const netSaving = Math.round(adjustedSaving - embodiedPenalty);
-  const totalCost = Math.round(sumItemField(items, 'cost'));
+  const totalCost = Math.round(sumItemCost(items, year));
   const energyKwh = Math.round(sumItemField(items, 'energyKwh'));
   const efficiencyScore = efficiencyPerMillion(netSaving, totalCost);
   const carbonScore = Math.max(0, netSaving);
@@ -476,10 +487,11 @@ export function calculateRealistic(items) {
   };
 }
 
-export function calculateDashboardMetrics(items = [], baselineItems = [], budget = DEFAULT_BUDGET) {
-  const user = calculateRealistic(items);
-  const baseline = calculateRealistic(baselineItems);
-  const total = calculateRealistic([...baselineItems, ...items]);
+export function calculateDashboardMetrics(items = [], baselineItems = [], budget = DEFAULT_BUDGET, year = BASE_YEAR) {
+  const opts = { year };
+  const user = calculateRealistic(items, opts);
+  const baseline = calculateRealistic(baselineItems, opts);
+  const total = calculateRealistic([...baselineItems, ...items], opts);
   const usedBudget = user.totalCost;
 
   return {
@@ -492,5 +504,6 @@ export function calculateDashboardMetrics(items = [], baselineItems = [], budget
     total,
     itemCount: items.length,
     baselineItemCount: baselineItems.length,
+    designYear: year,
   };
 }

@@ -63,13 +63,14 @@ export function loadScenarios() {
   return readRaw().sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
 }
 
-export function saveScenario({ id, name, nickname, items, metrics }) {
+export function saveScenario({ id, name, nickname, items, metrics, year }) {
   const scenarios = readRaw();
   const timestamp = nowIso();
   const scenario = {
     id: id || createId(),
     name: (name || '이름 없는 시나리오').trim(),
     nickname: (nickname || '').trim(),
+    year: Number(year) || null,
     items: items.map(stripItem),
     metrics,
     createdAt: timestamp,

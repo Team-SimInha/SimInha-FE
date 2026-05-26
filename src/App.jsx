@@ -5,6 +5,7 @@ import PersonalTrack from './PersonalTrack.jsx';
 import { DEFAULT_BUDGET, ITEM_MAP, REFERENCE_SOURCES } from './items.js';
 import { checkPlacement } from './zones.js';
 import { calculateDashboardMetrics } from './penalties.js';
+import { BASE_YEAR, getEffectiveCost } from './costForecast.js';
 import { PREINSTALLED_ITEMS, PREINSTALLED_NOTE } from './preinstalled.js';
 import { deleteScenario, loadScenarios, renameScenario, saveScenario } from './storage.js';
 import { buildReportMarkdown, requestScenarioReport } from './reportApi.js';
@@ -342,9 +343,15 @@ function ScenarioPanel({ scenarios, activeScenarioId, onSave, onLoad, onRename, 
       {scenarios.map((scenario) => (
         <div key={scenario.id} className={'scenario-entry ' + (activeScenarioId === scenario.id ? 'active' : '')}>
           <button className="scenario-main" onClick={() => onLoad(scenario)}>
-            <strong>{scenario.name}</strong>
+            <strong>
+              {scenario.year && (
+                <span style={{ color: '#79c0ff', fontWeight: 600, marginRight: 6 }}>[{scenario.year}]</span>
+              )}
+              {scenario.name}
+            </strong>
             <span>
               {(scenario.metrics?.user?.netSaving / 1000 || 0).toFixed(1)}t · {scenario.items?.length || 0}개
+              {scenario.metrics?.usedBudget ? ` · ${Math.round(scenario.metrics.usedBudget / 10000).toLocaleString()}만원` : ''}
             </span>
           </button>
           <button className="secondary mini-button" onClick={() => onRename(scenario)}>이름</button>
@@ -418,6 +425,7 @@ export default function App() {
   const [nickname, setNickname] = useState('');
   const [selectedType, setSelectedType] = useState(null);
   const [items, setItems] = useState([]);
+  const [designYear, setDesignYear] = useState(BASE_YEAR);
   const [toast, setToast] = useState(null);
   const [showDetail, setShowDetail] = useState(false);
   const [showPreinstalled, setShowPreinstalled] = useState(true);
@@ -438,8 +446,17 @@ export default function App() {
   });
 
   const metrics = useMemo(
-    () => calculateDashboardMetrics(items, PREINSTALLED_ITEMS, DEFAULT_BUDGET),
-    [items]
+    () => calculateDashboardMetrics(items, PREINSTALLED_ITEMS, DEFAULT_BUDGET, designYear),
+    [items, designYear]
+  );
+
+  const effectiveCostOf = useCallback(
+    (type) => {
+      const meta = ITEM_MAP[type];
+      if (!meta) return 0;
+      return getEffectiveCost(type, designYear, meta.cost);
+    },
+    [designYear]
   );
 
   const showToast = useCallback((msg, type = 'success') => {
@@ -451,9 +468,9 @@ export default function App() {
     (type) => {
       const meta = ITEM_MAP[type];
       if (!meta || meta.coeff === 0) return false;
-      return metrics.remainingBudget >= meta.cost;
+      return metrics.remainingBudget >= effectiveCostOf(type);
     },
-    [metrics.remainingBudget]
+    [metrics.remainingBudget, effectiveCostOf]
   );
 
   useEffect(() => {
@@ -466,8 +483,9 @@ export default function App() {
       showToast('선택한 설비는 점수에 반영되지 않아 배치할 수 없습니다', 'error');
       return;
     }
-    if (metrics.remainingBudget < meta.cost) {
-      showToast(`${meta.label} 설치 예산이 부족합니다`, 'error');
+    const yearAdjustedCost = effectiveCostOf(raw.type);
+    if (metrics.remainingBudget < yearAdjustedCost) {
+      showToast(`${meta.label} 설치 예산이 부족합니다 (${designYear}년 단가 기준)`, 'error');
       return;
     }
 
@@ -519,26 +537,30 @@ export default function App() {
   const refreshScenarios = () => setScenarios(loadScenarios());
 
   const handleSaveScenario = () => {
-    const defaultName = nickname.trim() || `시나리오 ${scenarios.length + 1}`;
-    const name = prompt('시나리오 이름을 입력하세요', defaultName);
+    const defaultName = nickname.trim()
+      ? `${nickname} ${scenarios.length + 1}차안`
+      : `${scenarios.length + 1}차 안`;
+    const name = prompt('시나리오 이름을 입력하세요 (예: 1차 안, 2차 안)', defaultName);
     if (name === null) return;
     const saved = saveScenario({
       name,
       nickname,
       items,
+      year: designYear,
       metrics: metricSnapshot(metrics),
     });
     setActiveScenarioId(saved.id);
     refreshScenarios();
-    showToast('시나리오를 저장했습니다');
+    showToast(`시나리오 저장 (${designYear}년 단가 기준)`);
   };
 
   const handleLoadScenario = (scenario) => {
     setItems(scenario.items || []);
     setNickname(scenario.nickname || '');
+    if (scenario.year) setDesignYear(Number(scenario.year));
     setSelectedType(null);
     setActiveScenarioId(scenario.id);
-    showToast(`${scenario.name} 불러오기 완료`);
+    showToast(`${scenario.name} 불러오기 완료${scenario.year ? ` (${scenario.year}년 단가)` : ''}`);
   };
 
   const handleRenameScenario = (scenario) => {
@@ -627,6 +649,9 @@ export default function App() {
         usedBudget={metrics.usedBudget}
         remainingBudget={metrics.remainingBudget}
         canAffordItem={canAffordItem}
+        designYear={designYear}
+        onDesignYear={setDesignYear}
+        effectiveCostOf={effectiveCostOf}
       />
 
       <div className="map-wrap">
