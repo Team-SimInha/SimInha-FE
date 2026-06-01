@@ -209,6 +209,7 @@ export default function CampusMap({
   const pickModeRef = useRef(pickMode);
   const onPickRef = useRef(onPick);
   const onLogClickRef = useRef(onLogClick);
+  const itemsRef = useRef(items);
 
   useEffect(() => { selectedRef.current = selectedType; }, [selectedType]);
   useEffect(() => { onRemoveRef.current = onRemove; }, [onRemove]);
@@ -216,6 +217,7 @@ export default function CampusMap({
   useEffect(() => { pickModeRef.current = pickMode; }, [pickMode]);
   useEffect(() => { onPickRef.current = onPick; }, [onPick]);
   useEffect(() => { onLogClickRef.current = onLogClick; }, [onLogClick]);
+  useEffect(() => { itemsRef.current = items; }, [items]);
 
   useEffect(() => {
     const map = new maplibregl.Map({
@@ -910,16 +912,26 @@ export default function CampusMap({
         const props = bldHits[0].properties;
         const zone = CAMPUS_ZONES.find((z) => z.id === props.id);
         if (zone) {
-          // 폴리곤 중심을 사용 (안전한 옥상 위치)
+          // 폴리곤 중심
           let cx = 0, cy = 0;
           for (const [x, y] of zone.polygon) { cx += x; cy += y; }
           cx /= zone.polygon.length; cy /= zone.polygon.length;
-          // 같은 건물에 여러 개 배치 시 겹치지 않게 약간씩 분산
-          const offset = 0.000015;
-          const angle = Math.random() * Math.PI * 2;
-          const dist = Math.random() * offset;
-          lng = cx + Math.cos(angle) * dist / Math.cos((cy * Math.PI) / 180);
-          lat = cy + Math.sin(angle) * dist;
+          // 같은 건물 옥상에 이미 배치된 동일 타입 아이템 개수 (자가소비 태양광 패널 어레이 한 개 ≈ 16m×8m)
+          const existingOnBuilding = (itemsRef.current || []).filter(
+            (it) => it.zoneId === zone.id && ITEM_MAP[it.type]?.model3d?.onRoof
+          ).length;
+          // 3×3 격자 (col*row=9칸) 으로 분산 — 패널 폭 만큼 띄움
+          const gridSize = 3;
+          const slot = existingOnBuilding % (gridSize * gridSize);
+          const col = slot % gridSize;
+          const row = Math.floor(slot / gridSize);
+          const colSpacing = 0.00022; // ~19m E-W
+          const rowSpacing = 0.00014; // ~15m N-S
+          const dx = (col - (gridSize - 1) / 2) * colSpacing;
+          const dy = (row - (gridSize - 1) / 2) * rowSpacing;
+          const latRatio = 1 / Math.cos((cy * Math.PI) / 180);
+          lng = cx + dx * latRatio;
+          lat = cy + dy;
         }
       }
       onPlaceRef.current({ type, lng, lat });
