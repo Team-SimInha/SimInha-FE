@@ -131,8 +131,8 @@ export default function Palette({
       <div style={{ fontSize: 12, color: '#8b949e', lineHeight: 1.6 }}>
         1. 좌측에서 요소 선택<br />
         2. 지도 클릭으로 배치<br />
-        3. 하단 "리더보드 제출"로 등록<br />
-        4. 닉네임이 없으면 익명으로 표시<br />
+        3. 오른쪽 패널에서 시나리오 저장<br />
+        4. AI 리포트로 정책 검토 내용 확인<br />
         <br />
         우클릭 또는 Shift+클릭 = 삭제
       </div>

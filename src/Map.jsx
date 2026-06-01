@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { ITEM_MAP, buildItemPolygon, buildPolePolygon } from './items.js';
-import { CAMPUS_ZONES, DECORATIVE_TREES, WALKWAYS } from './zones.js';
+import { CAMPUS_ZONES, DECORATIVE_TREES, WALKWAYS, CAMPUS_ROAD_CENTERLINES } from './zones.js';
 import { CAMPUS_POLYS, INHA_BUILDINGS } from './inha_buildings.js';
 
 // 캠퍼스 건물의 OSM way ID — OSM 배경 레이어에서 이 ID들은 제외해서 z-fighting 방지
@@ -254,13 +254,11 @@ export default function CampusMap({
         (l) => l.type === 'symbol' && l.layout && l.layout['text-field']
       )?.id;
 
-      // ── 사용자가 지정한 OSM 타일 ID 별 건물 색상/이름 (대체 분류) ──
-      // OpenMapTiles는 캠퍼스 일부 건물에 합성 ID를 부여하므로 Overpass 데이터에 없음.
-      // 사용자가 호버해서 알려준 ID를 여기에 넣으면 빨강/녹색/노랑으로 도색됨.
-      const TILE_ID_OVERRIDES = {
-        // 사용자 지정: 큰 안뜰 건물 = 인하대 5호관 (태양광 설치 추정)
-        31492463: { type: 'solar_building', name: '5호관 (인하대)', color: '#ffd633' },
-      };
+      // ── 배경 타일 건물 오버라이드 ──
+      // 캠퍼스 주요 건물은 inha_buildings.js의 OSM footprint를 우선 사용한다.
+      // 과거 임시로 지정했던 타일 ID 기반 5호관 라벨은 실제 건물 폴리곤과
+      // 중복/오인될 수 있어 비워둔다.
+      const TILE_ID_OVERRIDES = {};
       const TILE_OLD_IDS = Object.keys(TILE_ID_OVERRIDES)
         .filter(k => TILE_ID_OVERRIDES[k].type === 'old_building').map(Number);
       const TILE_NEW_IDS = Object.keys(TILE_ID_OVERRIDES)
@@ -460,13 +458,21 @@ export default function CampusMap({
       // 비건물·비호수 지면
       map.addLayer({
         id: 'zones-ground-fill', type: 'fill', source: 'campus-zones',
-        filter: ['all', ['==', ['get', 'isBuilding'], false], ['!=', ['get', 'zoneType'], 'water']],
+        filter: ['all',
+          ['==', ['get', 'isBuilding'], false],
+          ['!=', ['get', 'zoneType'], 'water'],
+          ['!=', ['get', 'zoneType'], 'main_road'],
+        ],
         paint: { 'fill-color': groundColorExpr, 'fill-opacity': 0.6 },
       });
       // 비건물 외곽선 (점선)
       map.addLayer({
         id: 'zones-line-nonbldg', type: 'line', source: 'campus-zones',
-        filter: ['all', ['!=', ['get', 'zoneType'], 'water'], ['==', ['get', 'isBuilding'], false]],
+        filter: ['all',
+          ['!=', ['get', 'zoneType'], 'water'],
+          ['!=', ['get', 'zoneType'], 'main_road'],
+          ['==', ['get', 'isBuilding'], false],
+        ],
         paint: {
           'line-color': lineColorExpr,
           'line-width': 2,
@@ -499,6 +505,39 @@ export default function CampusMap({
       map.addLayer({
         id: 'walkways-line', type: 'line', source: 'walkways',
         paint: { 'line-color': '#c9b88a', 'line-width': 2.5, 'line-opacity': 0.52 },
+      });
+
+      // 주요 도로 중심선 — 도로 폴리곤과 함께 실제 동선감을 보강
+      map.addSource('campus-road-lines', {
+        type: 'geojson',
+        data: {
+          type: 'FeatureCollection',
+          features: CAMPUS_ROAD_CENTERLINES.map((r) => ({
+            type: 'Feature',
+            properties: { id: r.id, name: r.name },
+            geometry: { type: 'LineString', coordinates: r.coordinates },
+          })),
+        },
+      });
+      map.addLayer({
+        id: 'campus-road-line-casing',
+        type: 'line',
+        source: 'campus-road-lines',
+        paint: {
+          'line-color': '#0d1117',
+          'line-width': 7,
+          'line-opacity': 0.42,
+        },
+      });
+      map.addLayer({
+        id: 'campus-road-line',
+        type: 'line',
+        source: 'campus-road-lines',
+        paint: {
+          'line-color': '#b8c0cc',
+          'line-width': 3.5,
+          'line-opacity': 0.72,
+        },
       });
 
       // ── 인하대 정의 건물 (3D) ──

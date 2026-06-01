@@ -67,6 +67,7 @@ function metricSnapshot(metrics) {
     budget: metrics.budget,
     usedBudget: metrics.usedBudget,
     remainingBudget: metrics.remainingBudget,
+    designYear: metrics.designYear,
     constraintSignals: {
       greenSacrificePenalty: metrics.total.greenSacrificePenalty || 0,
       greenSacrificeBreakdown: metrics.total.greenSacrificeBreakdown || [],
@@ -86,6 +87,8 @@ function buildReportItems(items) {
     const qty = item.qty || 1;
     const baseSaving = Number(meta.coeff || 0) * qty;
     const saving = Number(item.effectiveCoeff ?? meta.coeff ?? 0) * qty;
+    const energy = Number(item.effectiveEnergyKwh ?? meta.energyKwh ?? 0) * qty;
+    const unitCost = Number(item.effectiveUnitCost ?? meta.cost ?? 0);
     const locationName = item.locationName || item.zoneName || '일반 구역';
     return {
       id: item.id,
@@ -102,27 +105,72 @@ function buildReportItems(items) {
       zoneNote: item.zoneNote || '',
       zoneReason: item.zoneReason || '',
       placementReason: item.zoneReason || '',
+      placementScore: item.placementScore || 100,
+      placementModifiers: item.placementModifiers || [],
+      costMultiplier: item.costMultiplier || 1,
       lng: item.lng,
       lat: item.lat,
-      costKrw: Number(meta.cost || 0) * qty,
+      costKrw: unitCost * qty,
       baseSavingKgCO2PerYear: baseSaving,
       savingKgCO2PerYear: saving,
-      energyKwhPerYear: Number(meta.energyKwh || 0) * qty,
+      energyKwhPerYear: energy,
       efficiencyRate: baseSaving > 0 ? Math.round((saving / baseSaving) * 100) : 100,
     };
   });
 }
 
-function renderInlineMarkdown(text) {
-  return text.split(/(\*\*[^*]+\*\*)/g).map((part, idx) => {
+function renderInlineMarkdown(text, citations = {}) {
+  const citationMap = citations?.byId || {};
+  return String(text || '').split(/(\*\*[^*]+\*\*|\[\d+\])/g).map((part, idx) => {
     if (part.startsWith('**') && part.endsWith('**')) {
       return <strong key={idx}>{part.slice(2, -2)}</strong>;
+    }
+    if (/^\[\d+\]$/.test(part)) {
+      const id = part.slice(1, -1);
+      const citation = citationMap[id] || citationMap[Number(id)];
+      return <CitationRef key={idx} label={part} citation={citation} />;
     }
     return <span key={idx}>{part}</span>;
   });
 }
 
-function MarkdownView({ markdown }) {
+function CitationRef({ label, citation, compact = false }) {
+  const [tooltip, setTooltip] = useState(null);
+  const show = (event) => {
+    if (!citation) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const width = Math.min(380, Math.max(260, window.innerWidth - 32));
+    const x = Math.min(Math.max(rect.left + rect.width / 2, width / 2 + 12), window.innerWidth - width / 2 - 12);
+    const openBelow = rect.top < 150;
+    const y = openBelow ? rect.bottom + 10 : rect.top - 10;
+    setTooltip({ x, y, width, openBelow });
+  };
+  const hide = () => setTooltip(null);
+  return (
+    <span
+      className={`citation-ref ${compact ? 'citation-pill' : ''}`}
+      tabIndex={0}
+      title={citation?.source || '근거 정보'}
+      onMouseEnter={show}
+      onMouseLeave={hide}
+      onFocus={show}
+      onBlur={hide}
+    >
+      {label}
+      {tooltip && citation && (
+        <span
+          className={`citation-tooltip-fixed ${tooltip.openBelow ? 'below' : 'above'}`}
+          style={{ left: tooltip.x, top: tooltip.y, width: tooltip.width }}
+        >
+          <strong>{citation.label}</strong>
+          <span>{citation.source}</span>
+        </span>
+      )}
+    </span>
+  );
+}
+
+function MarkdownView({ markdown, citations }) {
   const lines = markdown.split('\n');
   const blocks = [];
 
@@ -204,20 +252,20 @@ function MarkdownView({ markdown }) {
   return (
     <div className="markdown-body">
       {blocks.map((block, idx) => {
-        if (block.type === 'h1') return <h2 key={idx}>{renderInlineMarkdown(block.text)}</h2>;
-        if (block.type === 'h2') return <h3 key={idx}>{renderInlineMarkdown(block.text)}</h3>;
-        if (block.type === 'h3') return <h4 key={idx}>{renderInlineMarkdown(block.text)}</h4>;
+        if (block.type === 'h1') return <h2 key={idx}>{renderInlineMarkdown(block.text, citations)}</h2>;
+        if (block.type === 'h2') return <h3 key={idx}>{renderInlineMarkdown(block.text, citations)}</h3>;
+        if (block.type === 'h3') return <h4 key={idx}>{renderInlineMarkdown(block.text, citations)}</h4>;
         if (block.type === 'ul') {
           return (
             <ul key={idx}>
-              {block.items.map((item, itemIdx) => <li key={itemIdx}>{renderInlineMarkdown(item)}</li>)}
+              {block.items.map((item, itemIdx) => <li key={itemIdx}>{renderInlineMarkdown(item, citations)}</li>)}
             </ul>
           );
         }
         if (block.type === 'ol') {
           return (
             <ol key={idx}>
-              {block.items.map((item, itemIdx) => <li key={itemIdx}>{renderInlineMarkdown(item)}</li>)}
+              {block.items.map((item, itemIdx) => <li key={itemIdx}>{renderInlineMarkdown(item, citations)}</li>)}
             </ol>
           );
         }
@@ -226,12 +274,12 @@ function MarkdownView({ markdown }) {
             <div key={idx} className="markdown-table-wrap">
               <table>
                 <thead>
-                  <tr>{block.header.map((cell, cellIdx) => <th key={cellIdx}>{renderInlineMarkdown(cell)}</th>)}</tr>
+                  <tr>{block.header.map((cell, cellIdx) => <th key={cellIdx}>{renderInlineMarkdown(cell, citations)}</th>)}</tr>
                 </thead>
                 <tbody>
                   {block.rows.map((row, rowIdx) => (
                     <tr key={rowIdx}>
-                      {row.map((cell, cellIdx) => <td key={cellIdx}>{renderInlineMarkdown(cell)}</td>)}
+                      {row.map((cell, cellIdx) => <td key={cellIdx}>{renderInlineMarkdown(cell, citations)}</td>)}
                     </tr>
                   ))}
                 </tbody>
@@ -239,8 +287,187 @@ function MarkdownView({ markdown }) {
             </div>
           );
         }
-        return <p key={idx}>{renderInlineMarkdown(block.text)}</p>;
+        return <p key={idx}>{renderInlineMarkdown(block.text, citations)}</p>;
       })}
+    </div>
+  );
+}
+
+function ReportSnapshot({ report }) {
+  const visual = report?.visualSummary;
+  if (!visual) return null;
+  return (
+    <div className="report-dashboard">
+      <div className="report-hero-panel">
+        <div>
+          <div className="modal-kicker">Scenario View</div>
+          <h3>{report.reportType || visual.type || '시나리오 검토안'}</h3>
+          <p>{report.headline || report.readerTakeaway}</p>
+        </div>
+        <div className="report-question">
+          <span>핵심 질문</span>
+          <strong>{report.decisionQuestion}</strong>
+        </div>
+      </div>
+
+      <div className="report-metric-grid">
+        {(visual.metricCards || []).map((card) => (
+          <div className={`report-metric-card ${card.tone || 'neutral'}`} key={card.label}>
+            <span>{card.label}</span>
+            <strong>{card.value}</strong>
+            {card.sub && <em>{card.sub}</em>}
+          </div>
+        ))}
+      </div>
+
+      <div className="report-flow">
+        {(visual.flow || []).map((step) => (
+          <div className="report-flow-step" key={step.label}>
+            <span>{step.label}</span>
+            <strong>{step.value}</strong>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CitationBadge({ entry }) {
+  if (!entry) return null;
+  return <CitationRef label={`[${entry.id}] ${entry.label}`} citation={entry} compact />;
+}
+
+function ReportInsightCards({ report }) {
+  const citations = report?.citations?.entries || [];
+  const sections = Array.isArray(report?.sections) ? report.sections.slice(0, 5) : [];
+  const visibleSections = [...sections];
+  if (visibleSections.length > 0 && visibleSections.length % 2 === 1) {
+    const primaryCitation = citations[0];
+    visibleSections.push({
+      heading: '근거와 전제 확인',
+      body: report?.notes?.[0] || '감축량과 비용은 공식 계수와 앱 내부 보수 가정을 조합한 검토용 값입니다.',
+      evidence: primaryCitation ? `${primaryCitation.label}: ${primaryCitation.source}` : '본문의 [1], [2] 근거 표시',
+      action: '발표 전에는 실측 자료와 공식 계수 적용 범위를 한 번 더 분리해서 설명하세요.',
+      tone: 'neutral',
+    });
+  }
+  if (!visibleSections.length) return null;
+  return (
+    <section className="report-section-block">
+      <div className="report-block-heading">
+        <div>
+          <span className="modal-kicker">AI Research Notes</span>
+          <h3>배치에서 읽어낸 관찰</h3>
+        </div>
+        <p>고정된 잘한 점/부족한 점 대신, 이번 시나리오에서 눈에 띄는 해석을 카드로 정리합니다.</p>
+      </div>
+      <div className="report-insight-grid">
+        {visibleSections.map((section, index) => (
+          <article className={`report-insight-card ${section.tone || 'neutral'}`} key={`${section.heading}-${index}`}>
+            <span>{section.tone === 'warn' ? '확인 필요' : section.tone === 'action' ? '다음 행동' : '관찰'}</span>
+            <strong>{section.heading}</strong>
+            <p>{section.body}</p>
+            {section.evidence && <div className="insight-evidence">근거: {section.evidence}</div>}
+            {section.action && <div className="insight-action">다음: {section.action}</div>}
+            <div className="insight-citations">
+              {citations.slice(index % Math.max(citations.length, 1), (index % Math.max(citations.length, 1)) + 1).map((entry) => (
+                <CitationBadge key={entry.id} entry={entry} />
+              ))}
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ReportPlacementBoard({ report }) {
+  const cards = report?.visualSummary?.placementCards || [];
+  const mix = report?.visualSummary?.mix || [];
+  if (!cards.length && !mix.length) return null;
+  return (
+    <section className="report-section-block">
+      <div className="report-block-heading">
+        <div>
+          <span className="modal-kicker">Placement Map</span>
+          <h3>무엇을 어디에 놓았는지</h3>
+        </div>
+        <p>표 대신 위치별 배치 결과를 카드로 묶어, 기여도와 설치 판단을 함께 볼 수 있게 했습니다.</p>
+      </div>
+      {mix.length > 0 && (
+        <div className="report-mix-strip">
+          {mix.map((item) => (
+            <div className="report-mix-item" key={item.label}>
+              <div className="mix-label">
+                <span>{item.label}</span>
+                <strong>{item.value}</strong>
+              </div>
+              <div className="mix-bar"><i style={{ width: `${Math.min(100, Math.max(0, Number(item.pct || 0)))}%` }} /></div>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="placement-card-grid">
+        {cards.map((card) => (
+          <article className="placement-result-card" key={`${card.rank}-${card.location}-${card.label}`}>
+            <div className="placement-rank">{card.rank}</div>
+            <div>
+              <strong>{card.location}</strong>
+              <span>{card.label} · {card.qty}</span>
+            </div>
+            <dl>
+              <div><dt>절감</dt><dd>{card.saving}</dd></div>
+              <div><dt>에너지</dt><dd>{card.energy}</dd></div>
+              <div><dt>비용</dt><dd>{card.cost}</dd></div>
+            </dl>
+            <p>{card.reason}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ReportSourceRail({ report }) {
+  const citations = report?.citations?.entries || [];
+  const patterns = report?.visualSummary?.sourcePattern || [];
+  if (!citations.length && !patterns.length) return null;
+  return (
+    <aside className="report-source-rail">
+      <div className="source-rail-card">
+        <span className="modal-kicker">Reading Guide</span>
+        <h3>읽는 순서</h3>
+        <ol>
+          {(patterns.length ? patterns : ['상단 카드로 전체 방향을 보고, 관찰 카드에서 근거를 확인하세요.']).map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ol>
+      </div>
+      <div className="source-rail-card">
+        <span className="modal-kicker">Evidence</span>
+        <h3>근거 자료</h3>
+        <div className="source-chip-list">
+          {citations.map((entry) => <CitationBadge key={entry.id} entry={entry} />)}
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+function ReportWorkspace({ report }) {
+  if (!report) return null;
+  return (
+    <div className="report-workspace">
+      <main className="report-main-column">
+        <ReportSnapshot report={report} />
+        <ReportInsightCards report={report} />
+        <ReportPlacementBoard report={report} />
+        <details className="report-raw-details">
+          <summary>문서형 상세 보기</summary>
+          <MarkdownView markdown={report?.markdown || ''} citations={report?.citations} />
+        </details>
+      </main>
+      <ReportSourceRail report={report} />
     </div>
   );
 }
@@ -273,7 +500,7 @@ function ReportModal({ report, loading, onClose, onDownload }) {
                 {report.highlights.map((item) => <span key={item}>{item}</span>)}
               </div>
             )}
-            <MarkdownView markdown={report?.markdown || ''} />
+            <ReportWorkspace report={report} />
           </>
         )}
       </div>
@@ -318,8 +545,8 @@ function SourcesModal({ onClose }) {
           <button className="secondary icon-button" onClick={onClose} aria-label="닫기">×</button>
         </div>
         <p style={{ color: '#8b949e', fontSize: 13, lineHeight: 1.6, marginTop: 10 }}>
-          모든 설비별 감축계수·단가는 아래 공인 가이드라인 기반 추정치입니다. 임의 수치는 사용하지 않습니다.
-          실제 시공 전에는 현장조건·실측데이터로 보정이 필요합니다.
+          설비별 감축계수는 아래 공인 가이드라인 기반 산식으로 계산합니다.
+          단가와 위치 보정은 정책 검토용 보수 가정이며, 실제 시공 전에는 현장조건·실측데이터로 보정이 필요합니다.
         </p>
         <ul style={{ marginTop: 14, paddingLeft: 22, color: '#c9d1d9', lineHeight: 1.8, fontSize: 13 }}>
           {REFERENCE_SOURCES.map((src) => <li key={src}>{src}</li>)}
@@ -333,7 +560,7 @@ function SourcesModal({ onClose }) {
           {COST_TRANSPARENCY_NOTE}
         </div>
         <p style={{ color: '#f2cc60', fontSize: 12, marginTop: 12 }}>
-          ⚠️ 인하대 실데이터(시설팀·ESG 추진단 협조) 확보 후 1차 보정 예정 (확장 로드맵 참조).
+          ⚠️ 인하대 실데이터(시설팀·ESG 추진단 협조) 확보 후 1차 보정 예정.
         </p>
       </div>
     </div>
@@ -571,8 +798,8 @@ export default function App() {
       showToast('선택한 설비는 점수에 반영되지 않아 배치할 수 없습니다', 'error');
       return;
     }
-    const yearAdjustedCost = effectiveCostOf(raw.type);
-    if (metrics.remainingBudget < yearAdjustedCost) {
+    const baseYearCost = effectiveCostOf(raw.type);
+    if (metrics.remainingBudget < baseYearCost) {
       showToast(`${meta.label} 설치 예산이 부족합니다 (${designYear}년 단가 기준)`, 'error');
       return;
     }
@@ -585,13 +812,25 @@ export default function App() {
     }
 
     const penalty = result.penalty || 1;
+    const costMultiplier = result.costMultiplier || 1;
+    const effectiveUnitCost = Math.round(baseYearCost * costMultiplier);
+    if (metrics.remainingBudget < effectiveUnitCost) {
+      showToast(`${meta.label} 위치 보정 후 설치 예산이 부족합니다 (${formatKrw(effectiveUnitCost)} 필요)`, 'error');
+      return;
+    }
     const effectiveCoeff = Math.round(meta.coeff * penalty);
+    const effectiveEnergyKwh = Math.round(Number(meta.energyKwh || 0) * penalty);
     const id = crypto.randomUUID();
     setItems((prev) => [...prev, {
       id,
       qty: 1,
       ...raw,
       effectiveCoeff,
+      effectiveEnergyKwh,
+      effectiveUnitCost,
+      costMultiplier,
+      placementScore: result.placementScore || Math.round(penalty * 100),
+      placementModifiers: result.modifiers || [],
       locationName: result.zone?.name || '일반 구역',
       zoneId: result.zone?.id || '',
       zoneType: result.zone?.type || 'general',
@@ -607,9 +846,10 @@ export default function App() {
       const penaltyNote =
         penalty < 1 ? ` (효율 ${Math.round(penalty * 100)}%)` :
         penalty > 1 ? ` (보너스 +${Math.round((penalty - 1) * 100)}%)` : '';
-      showToast(`[${result.zone.name}] ${result.reason}${penaltyNote}`);
+      const costNote = costMultiplier !== 1 ? ` · 비용 ${Math.round(costMultiplier * 100)}%` : '';
+      showToast(`[${result.zone.name}] ${result.reason}${penaltyNote}${costNote}`);
     }
-  }, [metrics.remainingBudget, showToast]);
+  }, [designYear, effectiveCostOf, metrics.remainingBudget, showToast]);
 
   const handleRemove = useCallback((id) => {
     setItems((prev) => prev.filter((it) => it.id !== id && !it.locked));
@@ -671,6 +911,7 @@ export default function App() {
     const reportItems = buildReportItems(items);
     const nextReport = await requestScenarioReport({
       nickname,
+      designYear,
       items: reportItems,
       reportItems,
       metrics: metricSnapshot(metrics),

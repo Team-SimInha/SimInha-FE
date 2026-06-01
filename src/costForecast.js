@@ -5,9 +5,9 @@
  * 연도별 단가 = baseCost × (1 − declineRate) ^ (year − BASE_YEAR)
  *
  * ── 근거 출처 ──
+ * - 기후에너지환경부 「2026년도 재생에너지보급(건물지원) 사업 공고」 — 건물 태양광/BIPV 보급지원 기준
  * - IEA 「World Energy Outlook 2024」 — 기술별 LCOE / 자본단가 전망 (Net Zero 시나리오)
  * - IRENA 「Renewable Power Generation Costs in 2023」 — 학습곡선 분석
- * - BloombergNEF 「New Energy Outlook 2024」 — 배터리·재생 단가 예측
  * - 한국에너지경제연구원 「에너지수급전망 2023-2050」
  * - 산업통상자원부 「제10차 전력수급기본계획」 (2023) — 신재생 단가 추이
  * - IEA 「The Future of Heat Pumps」 (2022) — 히트펌프 단가 전망
@@ -33,13 +33,13 @@ export const COST_DECLINE_RATE = {
 };
 
 export const COST_FORECAST_NOTE =
-  `기준연도 ${BASE_YEAR}년 대비 IEA WEO·IRENA·BloombergNEF·한국에너지경제연구원 전망 평균 적용. ` +
+  `기준연도 ${BASE_YEAR}년 대비 기후에너지환경부·한국에너지공단 보급지원 기준과 IEA·IRENA·한국에너지경제연구원 전망을 보수 적용. ` +
   `보조금·인건비 변화로 실측과 차이 가능 — 시설팀 실데이터 확보 시 보정 예정.`;
 
 export const COST_FORECAST_SOURCES = [
+  '기후에너지환경부 「2026년도 재생에너지보급(건물지원) 사업 공고」',
   'IEA 「World Energy Outlook 2024」 (Net Zero 시나리오 자본단가 전망)',
   'IRENA 「Renewable Power Generation Costs in 2023」 (학습곡선 분석)',
-  'BloombergNEF 「New Energy Outlook 2024」 (재생·배터리 단가 예측)',
   '한국에너지경제연구원 「에너지수급전망 2023-2050」',
   '산업통상자원부 「제10차 전력수급기본계획」 (2023) — 신재생 단가 추이',
   'IEA 「The Future of Heat Pumps」 (2022) — 지열·히트펌프 단가',

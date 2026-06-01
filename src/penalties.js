@@ -24,9 +24,15 @@ function itemUnitCoeff(item) {
   return Number(item.effectiveCoeff ?? meta?.coeff ?? 0);
 }
 
+function itemUnitEnergy(item) {
+  const meta = ITEM_MAP[item.type];
+  return Number(item.effectiveEnergyKwh ?? meta?.energyKwh ?? 0);
+}
+
 function sumItemField(items, field) {
   return items.reduce((sum, item) => {
     const meta = ITEM_MAP[item.type];
+    if (field === 'energyKwh') return sum + itemUnitEnergy(item) * itemQty(item);
     return sum + Number(meta?.[field] ?? 0) * itemQty(item);
   }, 0);
 }
@@ -35,7 +41,8 @@ function sumItemCost(items, year) {
   return items.reduce((sum, item) => {
     const meta = ITEM_MAP[item.type];
     if (!meta) return sum;
-    const unitCost = getEffectiveCost(item.type, year, meta.cost);
+    const projectedCost = getEffectiveCost(item.type, year, meta.cost);
+    const unitCost = Number(item.effectiveUnitCost ?? Math.round(projectedCost * Number(item.costMultiplier || 1)));
     return sum + unitCost * itemQty(item);
   }, 0);
 }
@@ -202,13 +209,13 @@ const ROOFTOP_FOOTPRINT_PER_UNIT = {
 };
 
 // ─── 4-A. 녹지 훼손 트레이드오프 (kgCO₂/년 단위당 흡수량 손실) ───
-// 산정 근거: 국립산림과학원 「산림 탄소흡수계수」 22 kgCO₂/그루 × 단위당 점유면적 × 녹지 식재밀도(0.1~0.2 그루/㎡)
+// 산정 근거: 국립산림과학원 주요 수종 표준 탄소흡수량 보수값 10 kgCO₂/그루 × 단위당 점유면적 × 녹지 식재밀도(0.1~0.2 그루/㎡)
 // → 녹지 위 설치 시 그루터기·관목 훼손에 따른 흡수 손실. 효율 페널티(zones.js)와 별도로 절감량에서 직접 차감.
 const GREEN_DAMAGE_PER_UNIT = {
-  solar_self:  88,   // kW당 ~30㎡ 점유 × 0.13그루/㎡ × 22kg
+  solar_self:  40,   // kW당 ~30㎡ 점유 × 0.13그루/㎡ × 10kg
   solar_bipv:  0,    // 외벽형 — 녹지 영향 없음
-  ev:          66,   // 기당 ~15㎡ × 0.2그루/㎡ × 22kg
-  geothermal:  44,   // RT당 ~2㎡ 시추 + 작업공간 훼손
+  ev:          30,   // 기당 ~15㎡ × 0.2그루/㎡ × 10kg
+  geothermal:  20,   // RT당 ~2㎡ 시추 + 작업공간 훼손
   rainwater:   0,    // 빗물 저류는 녹지에 중립~긍정
   tree:        0,    // 수목 — 녹지에 추가 식재
   greenroof:   0,    // 옥상 전용
@@ -271,6 +278,29 @@ export function calculateRealistic(items, options = {}) {
     grossSaving += baseCoeff;
     return { ...it, idx, qty, unitCoeff, baseCoeff, adjustedCoeff: baseCoeff };
   });
+
+  const modifierNotes = [];
+  for (const it of perItem) {
+    const modifiers = Array.isArray(it.placementModifiers) ? it.placementModifiers : [];
+    for (const modifier of modifiers) {
+      modifierNotes.push({
+        item: ITEM_MAP[it.type]?.label || it.type,
+        zoneName: it.zoneName || it.locationName || '일반 구역',
+        label: modifier.label,
+        effectMultiplier: Number(modifier.effectMultiplier || 1),
+        costMultiplier: Number(modifier.costMultiplier || 1),
+        reason: modifier.reason || '',
+      });
+    }
+  }
+  if (modifierNotes.length > 0) {
+    const text = modifierNotes.slice(0, 6).map((m) => {
+      const effect = m.effectMultiplier !== 1 ? `효율 ${Math.round(m.effectMultiplier * 100)}%` : '';
+      const cost = m.costMultiplier !== 1 ? `비용 ${Math.round(m.costMultiplier * 100)}%` : '';
+      return `${m.item}@${m.zoneName} ${m.label}(${[effect, cost].filter(Boolean).join(', ')})`;
+    }).join(', ');
+    details.push(`📍 위치·높이 보정: ${text}`);
+  }
 
   // ── 1. 설치 탄소 (Embodied Carbon) ──
   let embodiedPenalty = 0;
