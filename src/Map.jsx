@@ -192,6 +192,7 @@ export default function CampusMap({
   items,
   preinstalledItems = [],
   showPreinstalled = true,
+  showCampusPaths = true,
   cameraPreset = 'iso',
   onPlace,
   onRemove,
@@ -504,7 +505,12 @@ export default function CampusMap({
       });
       map.addLayer({
         id: 'walkways-line', type: 'line', source: 'walkways',
-        paint: { 'line-color': '#c9b88a', 'line-width': 2.5, 'line-opacity': 0.52 },
+        layout: {
+          'line-cap': 'round',
+          'line-join': 'round',
+          'visibility': showCampusPaths ? 'visible' : 'none',
+        },
+        paint: { 'line-color': '#d8c88f', 'line-width': 1.8, 'line-opacity': 0.42 },
       });
 
       // 주요 도로 중심선 — 도로 폴리곤과 함께 실제 동선감을 보강
@@ -523,20 +529,30 @@ export default function CampusMap({
         id: 'campus-road-line-casing',
         type: 'line',
         source: 'campus-road-lines',
+        layout: {
+          'line-cap': 'round',
+          'line-join': 'round',
+          'visibility': showCampusPaths ? 'visible' : 'none',
+        },
         paint: {
           'line-color': '#0d1117',
-          'line-width': 7,
-          'line-opacity': 0.42,
+          'line-width': 5,
+          'line-opacity': 0.28,
         },
       });
       map.addLayer({
         id: 'campus-road-line',
         type: 'line',
         source: 'campus-road-lines',
+        layout: {
+          'line-cap': 'round',
+          'line-join': 'round',
+          'visibility': showCampusPaths ? 'visible' : 'none',
+        },
         paint: {
-          'line-color': '#b8c0cc',
-          'line-width': 3.5,
-          'line-opacity': 0.72,
+          'line-color': '#b7c4d4',
+          'line-width': 2.4,
+          'line-opacity': 0.62,
         },
       });
 
@@ -709,6 +725,7 @@ export default function CampusMap({
       // OpenFreeMap은 Noto Sans, Mapbox는 Open Sans → 둘 다 폴백 시도
       map.addLayer({
         id: 'zones-label', type: 'symbol', source: 'campus-zones',
+        filter: ['!=', ['get', 'zoneType'], 'main_road'],
         layout: {
           'text-field': ['get', 'name'],
           'text-size': ['case', ['==', ['get', 'isBuilding'], true], 12, 11],
@@ -1097,6 +1114,22 @@ export default function CampusMap({
     move();
     if (!map.loaded()) map.once('load', move);
   }, [cameraPreset]);
+
+  useEffect(() => {
+    if (!mapRef.current) return;
+    const map = mapRef.current;
+    const layerIds = ['walkways-line', 'campus-road-line-casing', 'campus-road-line'];
+    const update = () => {
+      const visibility = showCampusPaths ? 'visible' : 'none';
+      for (const id of layerIds) {
+        if (map.getLayer(id)) {
+          map.setLayoutProperty(id, 'visibility', visibility);
+        }
+      }
+    };
+    if (map.isStyleLoaded()) update();
+    else map.once('load', update);
+  }, [showCampusPaths]);
 
   // 커서 변경
   useEffect(() => {

@@ -791,6 +791,11 @@ button {
 button:hover { background: #2ea043; }
 button.secondary { background: #30363d; }
 button.secondary:hover { background: #484f58; }
+button.secondary.active-toggle {
+  background: #1f6feb;
+  color: #ffffff;
+}
+button.secondary.active-toggle:hover { background: #388bfd; }
 button.danger { background: #da3633; }
 button.danger:hover { background: #f85149; }
 button:disabled { opacity: .5; cursor: not-allowed; }
