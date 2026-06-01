@@ -9,6 +9,7 @@
  */
 
 import { DEFAULT_BUDGET, ITEM_MAP } from './items.js';
+import { buildingRooftopAvailableArea, getBuildingZone, getBuildingRooftopFixtures, getRooftopReserveByZone } from './zones.js';
 
 const MILLION_KRW = 1000000;
 
@@ -137,6 +138,30 @@ const POSITIVE_SYNERGY = [
     reason: '🌿+💧 그린루프-빗물저류 연계: 관수 재활용 → 빗물 효과 +20%',
   },
 ];
+
+// ─── 4-B. 옥상 가용면적 ── 단위당 옥상 점유면적 (㎡) ───
+// solar_self: 1kW 패널 = 약 8㎡ (1m × 2m 모듈 × 4장 가정)
+// greenroof: 1㎡ 단위 그대로
+// 그 외 옥상 설치 아이템은 면적 경쟁 없음 (LED·BEMS = 실내, BIPV = 외벽)
+const ROOFTOP_FOOTPRINT_PER_UNIT = {
+  solar_self: 8,
+  greenroof: 1,
+};
+
+// ─── 4-A. 녹지 훼손 트레이드오프 (kgCO₂/년 단위당 흡수량 손실) ───
+// 산정 근거: 국립산림과학원 「산림 탄소흡수계수」 22 kgCO₂/그루 × 단위당 점유면적 × 녹지 식재밀도(0.1~0.2 그루/㎡)
+// → 녹지 위 설치 시 그루터기·관목 훼손에 따른 흡수 손실. 효율 페널티(zones.js)와 별도로 절감량에서 직접 차감.
+const GREEN_DAMAGE_PER_UNIT = {
+  solar_self:  88,   // kW당 ~30㎡ 점유 × 0.13그루/㎡ × 22kg
+  solar_bipv:  0,    // 외벽형 — 녹지 영향 없음
+  ev:          66,   // 기당 ~15㎡ × 0.2그루/㎡ × 22kg
+  geothermal:  44,   // RT당 ~2㎡ 시추 + 작업공간 훼손
+  rainwater:   0,    // 빗물 저류는 녹지에 중립~긍정
+  tree:        0,    // 수목 — 녹지에 추가 식재
+  greenroof:   0,    // 옥상 전용
+  bems:        0,    // 건물 전용
+  led:         0,    // 건물 전용
+};
 
 // ─── 5. 규제 상한 ───
 const REGULATORY_CAPS = {
@@ -306,6 +331,104 @@ export function calculateRealistic(items) {
     }
   }
 
+  // ── 4-A. 녹지 훼손 트레이드오프 ──
+  let greenSacrificePenalty = 0;
+  const greenSacrificeBreakdown = [];
+  for (const item of perItem) {
+    if (item.zoneType !== 'green') continue;
+    const lossPerUnit = GREEN_DAMAGE_PER_UNIT[item.type] || 0;
+    if (lossPerUnit <= 0) continue;
+    const loss = lossPerUnit * item.qty;
+    item.adjustedCoeff = Math.max(0, item.adjustedCoeff - loss);
+    greenSacrificePenalty += loss;
+    greenSacrificeBreakdown.push({
+      type: item.type,
+      label: ITEM_MAP[item.type]?.label || item.type,
+      zoneName: item.zoneName || '녹지',
+      qty: item.qty,
+      loss,
+    });
+  }
+  if (greenSacrificePenalty > 0) {
+    const items = greenSacrificeBreakdown
+      .map((b) => `${b.label} ${formatQty(b.qty, b.type)} @ ${b.zoneName} (-${Math.round(b.loss).toLocaleString()} kgCO₂/년)`)
+      .join(', ');
+    details.push(`🌳 녹지 훼손 트레이드오프: ${items} → 합계 -${Math.round(greenSacrificePenalty).toLocaleString()} kgCO₂/년 (산림 흡수 손실)`);
+  }
+
+  // ── 4-C. 이중산정 방지 메타 (시그널) ──
+  // items.js avoidsDoubleCounting 필드를 가진 설비를 추출해 details/AI 프롬프트에 노출
+  const doubleCountGuards = [];
+  const guardedTypes = new Set();
+  for (const item of perItem) {
+    const meta = ITEM_MAP[item.type];
+    if (!meta?.avoidsDoubleCounting?.length) continue;
+    if (guardedTypes.has(item.type)) continue;
+    guardedTypes.add(item.type);
+    doubleCountGuards.push({
+      type: item.type,
+      label: meta.label,
+      avoidsDoubleCounting: meta.avoidsDoubleCounting,
+    });
+  }
+  if (doubleCountGuards.length > 0) {
+    const guardText = doubleCountGuards
+      .map((g) => `${g.label} (보호 항목: ${g.avoidsDoubleCounting.join(', ')})`)
+      .join('; ');
+    details.push(`🔒 이중산정 방지: ${guardText} — 설치 인프라 효과만 카운트, 별도 사용량/제3자 실적과 합산 금지`);
+  }
+
+  // ── 4-B. 옥상 가용면적 (공조설비/통로 제외) ──
+  const rooftopUsageByZone = {};
+  for (const item of perItem) {
+    const footprint = ROOFTOP_FOOTPRINT_PER_UNIT[item.type];
+    if (!footprint || !item.zoneId) continue;
+    const zone = getBuildingZone(item.zoneId);
+    if (!zone) continue;
+    if (!rooftopUsageByZone[item.zoneId]) {
+      const reserve = getRooftopReserveByZone(item.zoneId);
+      const fixtures = getBuildingRooftopFixtures(item.zoneId);
+      rooftopUsageByZone[item.zoneId] = {
+        zoneName: zone.name || item.zoneId,
+        zoneType: zone.type,
+        usage: 0,
+        available: buildingRooftopAvailableArea(item.zoneId),
+        reserveRatio: reserve.ratio,
+        reserveNote: reserve.note,
+        fixtureAreaM2: fixtures.areaM2,
+        fixtures: fixtures.fixtures,
+        fixturesSource: fixtures.source,
+        items: [],
+      };
+    }
+    const used = footprint * item.qty;
+    rooftopUsageByZone[item.zoneId].usage += used;
+    rooftopUsageByZone[item.zoneId].items.push({
+      type: item.type,
+      label: ITEM_MAP[item.type]?.label || item.type,
+      qty: item.qty,
+      area: used,
+    });
+  }
+  const rooftopReports = Object.values(rooftopUsageByZone);
+  for (const r of rooftopReports) {
+    if (r.available <= 0) continue;
+    const ratio = r.usage / r.available;
+    const reservePct = Math.round((r.reserveRatio || 0.3) * 100);
+    const fixtureNote = r.fixtureAreaM2 > 0
+      ? ` + 항공사진 fixture ${Math.round(r.fixtureAreaM2)}㎡ (${(r.fixtures || []).map((f) => f.label).join('·')})`
+      : '';
+    if (ratio > 1.0) {
+      warnings.push(
+        `⚠️ ${r.zoneName} 옥상 면적 초과: ${Math.round(r.usage).toLocaleString()}㎡ 필요 vs ${Math.round(r.available).toLocaleString()}㎡ 가용 (${r.zoneType} 기준 reserve ${reservePct}% — ${r.reserveNote}${fixtureNote})`
+      );
+    } else if (ratio > 0.85) {
+      details.push(
+        `🏢 ${r.zoneName} 옥상 사용률 ${Math.round(ratio * 100)}% (${Math.round(r.usage).toLocaleString()}/${Math.round(r.available).toLocaleString()}㎡, reserve ${reservePct}%${fixtureNote}) — 추가 설치 시 공조설비 충돌 위험`
+      );
+    }
+  }
+
   // ── 4. 긍정적 시너지 ──
   let synergyBonus = 0;
 
@@ -338,6 +461,10 @@ export function calculateRealistic(items) {
     diminishingPenalty: Math.round(diminishingPenalty),
     synergyPenalty: Math.round(synergyPenalty),
     synergyBonus: Math.round(synergyBonus),
+    greenSacrificePenalty: Math.round(greenSacrificePenalty),
+    greenSacrificeBreakdown,
+    rooftopUsage: rooftopReports,
+    doubleCountGuards,
     netSaving,
     carbonScore,
     energyKwh,

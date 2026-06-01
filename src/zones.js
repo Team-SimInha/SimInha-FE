@@ -5,6 +5,7 @@
  * 인경호·도로·주차장·운동장은 실제 캠퍼스 레이아웃에 맞춰 배치.
  */
 import { INHA_BUILDINGS } from './inha_buildings.js';
+import { BUILDING_ROOFTOP_FIXTURES } from './preinstalled.js';
 
 // ─── 구역 유형 ───
 // old_building   : 1970~80년대 노후 건물 (구조하중 부족)
@@ -413,10 +414,11 @@ const RULES = {
     new_building:   { allowed: true,  reason: '✅ 신축건물 — 구조하중 충분, 최적 조건' },
     main_road:      { allowed: false, reason: '❌ 도로 위 태양광 설치 불가' },
     parking:        { allowed: true,  reason: '✅ 주차장 캐노피형 태양광 (효율 90%)', penalty: 0.9 },
-    green:          { allowed: false, reason: '❌ 녹지 보전 — 지상형 태양광은 일조권·경관 훼손' },
+    green:          { allowed: true,  reason: '🌳 녹지 훼손 트레이드오프 — 흡수량 손실 차감 (효율 70%, 자세한 손실은 대시보드 참조)', penalty: 0.7, greenSacrifice: true },
     plaza:          { allowed: false, reason: '❌ 광장 보행 동선 차단 — 설치 불가' },
     sports:         { allowed: false, reason: '❌ 운동장 — 체육 활동 공간' },
     water:          { allowed: false, reason: '❌ 인경호 위 설치 불가 (수상태양광은 환경영향평가 별도)' },
+    _noZone:        { allowed: false, reason: '❌ 일반 바닥 — 구조물 필요. 건물 옥상·주차장·녹지 등 정의된 구역에 배치하세요' },
   },
   solar_bipv: {
     old_building:   { allowed: true,  reason: '⚠️ 노후건물 외벽 BIPV — 외벽 보강 필요 (효율 50%)', penalty: 0.5 },
@@ -429,9 +431,11 @@ const RULES = {
     plaza:          { allowed: false, reason: '❌ BIPV는 건물 외벽 전용' },
     sports:         { allowed: false, reason: '❌ BIPV는 건물 외벽 전용' },
     water:          { allowed: false, reason: '❌ 인경호 위 설치 불가' },
+    _noZone:        { allowed: false, reason: '❌ 일반 바닥 — BIPV는 건물 외벽 전용. 건물 위에 배치하세요' },
   },
   solar_lease: {
     _default:       { allowed: true,  reason: '⚠️ 부지대여형 — 설치는 가능하나 대학 탄소감축 실적 귀속 불가 (0 kgCO₂)' },
+    _noZone:        { allowed: true,  reason: '⚠️ 일반 바닥 부지대여형 — 운영사 실적 귀속 (대학 0 kgCO₂)' },
     main_road:      { allowed: false, reason: '❌ 도로 위 설치 불가' },
     water:          { allowed: false, reason: '❌ 인경호 위 설치 불가' },
     sports:         { allowed: false, reason: '❌ 운동장 위 설치 불가' },
@@ -442,6 +446,7 @@ const RULES = {
     solar_building: { allowed: true, reason: '✅ LED 교체 가능' },
     hospital:       { allowed: true, reason: '⚠️ 의료용 조도기준(300lux) 충족 필요 (효율 90%)', penalty: 0.9 },
     _default:       { allowed: false, reason: '❌ LED는 건물 내부에만 설치 가능' },
+    _noZone:        { allowed: false, reason: '❌ 일반 바닥 — LED는 건물 내부 전용. 건물 위에 배치하세요' },
   },
   geothermal: {
     main_road:      { allowed: false, reason: '❌ 지중 송전선 매립구간 — 한전 이격거리 규정' },
@@ -454,6 +459,7 @@ const RULES = {
     green:          { allowed: true,  reason: '✅ 녹지 — 지열 시추 최적 (지하수법 굴착허가 필요)' },
     sports:         { allowed: true,  reason: '✅ 운동장 하부 — 대규모 시추 적합' },
     water:          { allowed: false, reason: '❌ 호수 하부 시추 불가' },
+    _noZone:        { allowed: true,  reason: '⚠️ 일반 바닥 — 굴착허가 후 시추 가능 (효율 80%)', penalty: 0.8 },
   },
   bems: {
     old_building:   { allowed: true, reason: '⚠️ 노후건물 — BAS 미설치, 센서·통신 인프라 추가 (효율 70%)', penalty: 0.7 },
@@ -461,6 +467,7 @@ const RULES = {
     solar_building: { allowed: true, reason: '✅ BEMS + 태양광 연계 효과 (+8%)', penalty: 1.08 },
     hospital:       { allowed: true, reason: '✅ 의료시설 — 24시간 가동, 절감 효과 매우 큼 (+15%)', penalty: 1.15 },
     _default:       { allowed: false, reason: '❌ BEMS는 건물에만 설치 가능' },
+    _noZone:        { allowed: false, reason: '❌ 일반 바닥 — BEMS는 건물 시스템. 건물 위에 배치하세요' },
   },
   ev: {
     parking:        { allowed: true,  reason: '✅ 주차장 — EV 충전소 최적 위치' },
@@ -469,10 +476,11 @@ const RULES = {
     new_building:   { allowed: false, reason: '❌ 건물 위 설치 불가 — 인근 주차장에 배치하세요' },
     solar_building: { allowed: false, reason: '❌ 건물 위 설치 불가 — 인근 주차장에 배치하세요' },
     hospital:       { allowed: false, reason: '❌ 병원 위 설치 불가 — 응급차량 동선 확보' },
-    green:          { allowed: false, reason: '❌ 녹지 보전 — 주차장에 배치하세요' },
+    green:          { allowed: true,  reason: '🌳 녹지 일부 훼손 트레이드오프 — 흡수량 손실 차감 (효율 75%)', penalty: 0.75, greenSacrifice: true },
     plaza:          { allowed: false, reason: '❌ 광장 보행 동선 차단' },
     sports:         { allowed: false, reason: '❌ 운동장 위 설치 불가' },
     water:          { allowed: false, reason: '❌ 호수 위 설치 불가' },
+    _noZone:        { allowed: false, reason: '❌ 일반 바닥 — EV는 포장면 필요. 주차장·도로변에 배치하세요' },
   },
   rainwater: {
     green:          { allowed: true,  reason: '✅ 녹지 저지대 — 빗물 저류 최적' },
@@ -485,6 +493,7 @@ const RULES = {
     solar_building: { allowed: true,  reason: '⚠️ 건물 옥상 집수 시스템 (효율 50%)', penalty: 0.5 },
     hospital:       { allowed: false, reason: '❌ 의료시설 옥상 — 위생 규정' },
     water:          { allowed: false, reason: '❌ 호수 위 설치 불가' },
+    _noZone:        { allowed: true,  reason: '⚠️ 일반 바닥 — 소형 지하 저류조 가능 (효율 70%)', penalty: 0.7 },
   },
   greenroof: {
     old_building:   { allowed: true,  reason: '⚠️ 노후건물 — 경량형(extensive) 그린루프만, 토심 10cm 이하 (효율 50%)', penalty: 0.5 },
@@ -492,6 +501,7 @@ const RULES = {
     solar_building: { allowed: true,  reason: '✅ 태양광-그린루프 혼합 적용 (단, 같은 건물에 둘 다 시 효율↓)' },
     new_building:   { allowed: true,  reason: '✅ 신축건물 — 옥상녹화 최적 (집약형 가능)' },
     _default:       { allowed: false, reason: '❌ 그린루프는 건물 옥상에만 설치 가능' },
+    _noZone:        { allowed: false, reason: '❌ 일반 바닥 — 그린루프는 건물 옥상 전용. 건물 위에 배치하세요' },
   },
   tree: {
     main_road:      { allowed: true,  reason: '⚠️ 도로변 — 천근성 가로수만 (뿌리 1.5m 제한, 효율 70%)', penalty: 0.7 },
@@ -501,6 +511,7 @@ const RULES = {
     parking:        { allowed: true,  reason: '⚠️ 주차장 — 그늘 가로수, 포장 일부 철거 (효율 60%)', penalty: 0.6 },
     water:          { allowed: false, reason: '❌ 호수 위 수목 식재 불가' },
     _default:       { allowed: false, reason: '❌ 건물 위 수목 식재 불가 — 녹지에 배치하세요' },
+    _noZone:        { allowed: true,  reason: '✅ 일반 바닥 — 수목 식재 가능 (효율 80%)', penalty: 0.8 },
   },
 };
 
@@ -525,16 +536,109 @@ function pointInZone(lng, lat, zone) {
   return true;
 }
 
+// ─── 옥상 가용면적 계산 ───
+// 폴리곤 면적을 ㎡로 변환 (위도 보정 shoelace formula)
+const EARTH_DEG_TO_M_LAT = 111320;
+export function polygonAreaSquareMeters(polygon) {
+  if (!Array.isArray(polygon) || polygon.length < 3) return 0;
+  const latRad = (polygon[0][1] * Math.PI) / 180;
+  const lngMperDeg = EARTH_DEG_TO_M_LAT * Math.cos(latRad);
+  let area = 0;
+  for (let i = 0; i < polygon.length; i += 1) {
+    const j = (i + 1) % polygon.length;
+    const xi = polygon[i][0] * lngMperDeg;
+    const yi = polygon[i][1] * EARTH_DEG_TO_M_LAT;
+    const xj = polygon[j][0] * lngMperDeg;
+    const yj = polygon[j][1] * EARTH_DEG_TO_M_LAT;
+    area += xi * yj - xj * yi;
+  }
+  return Math.abs(area) / 2;
+}
+
+// 건물 유형별 옥상 공조·승강로·통로 점유율 (1 - ratio = 실제 가용면적 비율)
+//
+// ── 근거 ──
+// (a) 건축법 시행령 §119: 옥탑·승강기탑·계단탑 ≤ 건축면적의 1/8 (=12.5%) 까지 건축면적 제외
+// (b) 한국에너지공단 「태양광발전 설치 가이드」: 옥상 가용면적 = 전체 × (1 − 음영·통로·기타설비율). 통로·기타 0.20~0.40
+// (c) 소방기본법 시행규칙 §7: 옥상 피난·활동공간 별도 확보
+// (d) 한국건설기술연구원 「옥상녹화 적용가능면적 산정 사례」: 노후 ~30%, 신축 ~15% 설비 점유
+// (e) 의료기관 시설기준규칙: 24시간 공조 + 응급가스·헬리포트 통로 확보
+export const ROOFTOP_RESERVE_BY_TYPE = {
+  old_building:   { ratio: 0.35, note: '노후 건물 — 산재된 실외기·옥상 물탱크·통신탑, 통합 기계실 없음 (근거 a+b+d)' },
+  new_building:   { ratio: 0.20, note: '신축 건물 — 통합 기계실, 가용면적 양호 (근거 a+b+d)' },
+  solar_building: { ratio: 0.25, note: '기존 태양광 설치 건물 — 추가 공간 일부 제한 (근거 b)' },
+  hospital:       { ratio: 0.40, note: '의료시설 — 24시간 공조 + 응급가스 라인 + 헬리포트 통로 (근거 a+c+e)' },
+  auxiliary:      { ratio: 0.25, note: '부속 건물 — 평균치 (근거 b+d)' },
+};
+export const ROOFTOP_RESERVE_RATIO_DEFAULT = 0.30;
+const BUILDING_TYPES_FOR_ROOFTOP = ['old_building', 'new_building', 'solar_building', 'hospital', 'auxiliary'];
+
+// 호환성: 기존 ROOFTOP_RESERVE_RATIO 참조 코드 보존용 (deprecated, 기본값만 노출)
+export const ROOFTOP_RESERVE_RATIO = ROOFTOP_RESERVE_RATIO_DEFAULT;
+
+export function getRooftopReserveByZone(zoneId) {
+  const zone = CAMPUS_ZONES.find((z) => z.id === zoneId);
+  if (!zone) return { ratio: ROOFTOP_RESERVE_RATIO_DEFAULT, note: '미지정', type: null };
+  const entry = ROOFTOP_RESERVE_BY_TYPE[zone.type];
+  if (!entry) return { ratio: ROOFTOP_RESERVE_RATIO_DEFAULT, note: '유형 미정의', type: zone.type };
+  return { ...entry, type: zone.type };
+}
+
+// 항공사진에 보이는 명시적 옥상 설비(실외기·물탱크·헬리포트 등) 점유면적
+// generic reserve 와 별도로 BUILDING_ROOFTOP_FIXTURES 에서 차감
+export function getBuildingRooftopFixtures(zoneId) {
+  const entry = BUILDING_ROOFTOP_FIXTURES.find((b) => b.buildingId === zoneId);
+  if (!entry) return { areaM2: 0, fixtures: [], source: null };
+  const areaM2 = entry.fixtures.reduce((s, f) => s + (Number(f.areaM2) || 0), 0);
+  return { areaM2, fixtures: entry.fixtures, source: entry.source, name: entry.name };
+}
+
+export function buildingRooftopAvailableArea(zoneId) {
+  const zone = CAMPUS_ZONES.find((z) => z.id === zoneId);
+  if (!zone || !BUILDING_TYPES_FOR_ROOFTOP.includes(zone.type)) return 0;
+  const { ratio } = getRooftopReserveByZone(zoneId);
+  const totalArea = polygonAreaSquareMeters(zone.polygon);
+  const reserveArea = totalArea * ratio;
+  const fixtureArea = getBuildingRooftopFixtures(zoneId).areaM2;
+  return Math.max(0, totalArea - reserveArea - fixtureArea);
+}
+
+export function getBuildingZone(zoneId) {
+  return CAMPUS_ZONES.find((z) => z.id === zoneId) || null;
+}
+
 export function checkPlacement(itemType, lng, lat) {
   const zone = CAMPUS_ZONES.find((z) => pointInZone(lng, lat, z));
   const rules = RULES[itemType];
   if (!rules) return { allowed: true, reason: '✅ 설치 가능', zone };
 
+  // 정의된 zone 안 — zone-specific 또는 _default 규칙
   if (zone) {
     const rule = rules[zone.type] || rules._default;
     if (rule) {
-      return { allowed: rule.allowed, reason: rule.reason, zone, penalty: rule.penalty, bonus: rule.bonus };
+      return {
+        allowed: rule.allowed,
+        reason: rule.reason,
+        zone,
+        penalty: rule.penalty,
+        bonus: rule.bonus,
+        greenSacrifice: rule.greenSacrifice || false,
+      };
     }
+    return { allowed: true, reason: '✅ 일반 구역 — 설치 가능', zone };
   }
-  return { allowed: true, reason: '✅ 일반 구역 — 설치 가능', zone: null };
+
+  // 정의된 zone 바깥 (일반 바닥) — _noZone 우선, 없으면 _default 적용
+  const noZoneRule = rules._noZone || rules._default;
+  if (noZoneRule) {
+    return {
+      allowed: noZoneRule.allowed,
+      reason: noZoneRule.reason,
+      zone: null,
+      penalty: noZoneRule.penalty,
+      bonus: noZoneRule.bonus,
+      greenSacrifice: noZoneRule.greenSacrifice || false,
+    };
+  }
+  return { allowed: true, reason: '✅ 일반 바닥 — 설치 가능', zone: null };
 }

@@ -195,16 +195,27 @@ export default function CampusMap({
   cameraPreset = 'iso',
   onPlace,
   onRemove,
+  pickMode = false,
+  pickedLocation = null,
+  onPick,
+  practiceLogs = [],
+  onLogClick,
 }) {
   const mapRef = useRef(null);
   const containerRef = useRef(null);
   const selectedRef = useRef(selectedType);
   const onRemoveRef = useRef(onRemove);
   const onPlaceRef = useRef(onPlace);
+  const pickModeRef = useRef(pickMode);
+  const onPickRef = useRef(onPick);
+  const onLogClickRef = useRef(onLogClick);
 
   useEffect(() => { selectedRef.current = selectedType; }, [selectedType]);
   useEffect(() => { onRemoveRef.current = onRemove; }, [onRemove]);
   useEffect(() => { onPlaceRef.current = onPlace; }, [onPlace]);
+  useEffect(() => { pickModeRef.current = pickMode; }, [pickMode]);
+  useEffect(() => { onPickRef.current = onPick; }, [onPick]);
+  useEffect(() => { onLogClickRef.current = onLogClick; }, [onLogClick]);
 
   useEffect(() => {
     const map = new maplibregl.Map({
@@ -834,13 +845,62 @@ export default function CampusMap({
         e.preventDefault();
         onRemoveRef.current(e.features[0].properties.parentId || e.features[0].properties.id);
       });
+
+      // ── 위치 선택 핀 (pickMode 전용) ──
+      map.addSource('pick-pin', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      map.addLayer({
+        id: 'pick-pin-circle',
+        type: 'circle',
+        source: 'pick-pin',
+        paint: {
+          'circle-radius': 14,
+          'circle-color': '#7ee787',
+          'circle-stroke-color': '#0d1117',
+          'circle-stroke-width': 3,
+          'circle-opacity': 0.92,
+        },
+      });
+      map.addLayer({
+        id: 'pick-pin-emoji',
+        type: 'symbol',
+        source: 'pick-pin',
+        layout: {
+          'text-field': '📍',
+          'text-size': 22,
+          'text-allow-overlap': true,
+          'text-offset': [0, -0.1],
+        },
+      });
+
+      // 실천 기록 배지(practice-logs)는 useEffect 에서 idempotent 하게 셋업
     });
 
-    // 일반 클릭 → 새 아이템 배치
+    // 일반 클릭 → 새 아이템 배치 또는 위치 선택 (pickMode)
     map.on('click', (e) => {
+      if (e.originalEvent.shiftKey) return;
+
+      // pickMode: 위치만 선택 (개인 실천 트랙)
+      if (pickModeRef.current) {
+        // 실천 기록 배지 클릭이면 상세 모달 열기
+        const logHits = map.queryRenderedFeatures(e.point, { layers: ['practice-logs-bg', 'practice-logs-icon'] });
+        if (logHits.length > 0) {
+          onLogClickRef.current?.(logHits[0].properties.id);
+          return;
+        }
+        let locationName = '캠퍼스 일반 구역';
+        const bldHits = map.queryRenderedFeatures(e.point, { layers: ['campus-buildings-3d'] });
+        if (bldHits.length > 0) {
+          locationName = bldHits[0].properties?.name || locationName;
+        } else {
+          const zoneHits = map.queryRenderedFeatures(e.point, { layers: ['zones-ground-fill'] });
+          if (zoneHits.length > 0) locationName = zoneHits[0].properties?.name || locationName;
+        }
+        onPickRef.current?.(e.lngLat.lng, e.lngLat.lat, locationName);
+        return;
+      }
+
       const type = selectedRef.current;
       if (!type) return;
-      if (e.originalEvent.shiftKey) return;
 
       // 이미 배치된 아이템 위 클릭 → 무시
       const placedHits = map.queryRenderedFeatures(e.point, { layers: ['placed-items-body'] });
@@ -902,22 +962,131 @@ export default function CampusMap({
     else map.once('load', update);
   }, [preinstalledItems, showPreinstalled]);
 
-  // 카메라 프리셋 변경
+  // 실천 기록 배지 setup + 동기화 (idempotent)
+  useEffect(() => {
+    if (!mapRef.current) return;
+    const map = mapRef.current;
+
+    const setupAndUpdate = () => {
+      try {
+        // 소스 없으면 추가
+        if (!map.getSource('practice-logs')) {
+          map.addSource('practice-logs', {
+            type: 'geojson',
+            data: { type: 'FeatureCollection', features: [] },
+          });
+        }
+        // 배경 원 레이어
+        if (!map.getLayer('practice-logs-bg')) {
+          map.addLayer({
+            id: 'practice-logs-bg',
+            type: 'circle',
+            source: 'practice-logs',
+            paint: {
+              'circle-radius': 18,
+              'circle-color': '#ffffff',
+              'circle-stroke-color': '#7ee787',
+              'circle-stroke-width': 2.5,
+              'circle-opacity': 0.95,
+            },
+          });
+          map.on('mouseenter', 'practice-logs-bg', () => { map.getCanvas().style.cursor = 'pointer'; });
+          map.on('mouseleave', 'practice-logs-bg', () => {
+            map.getCanvas().style.cursor = pickModeRef.current ? 'crosshair' : '';
+          });
+        }
+        // 이모지 심볼 레이어
+        if (!map.getLayer('practice-logs-icon')) {
+          map.addLayer({
+            id: 'practice-logs-icon',
+            type: 'symbol',
+            source: 'practice-logs',
+            layout: {
+              'text-field': ['get', 'icon'],
+              'text-size': 22,
+              'text-allow-overlap': true,
+              'text-ignore-placement': true,
+            },
+          });
+        }
+      } catch (e) {
+        console.warn('[practice-logs] setup 실패:', e);
+        return;
+      }
+
+      const src = map.getSource('practice-logs');
+      if (!src) return;
+      const features = practiceLogs
+        .filter((log) => log?.location && typeof log.location.lng === 'number' && typeof log.location.lat === 'number')
+        .map((log) => ({
+          type: 'Feature',
+          properties: {
+            id: log.id,
+            icon: log.icon || '✨',
+            label: log.practiceLabel || '실천',
+            co2: log.co2Saved || 0,
+            locationName: log.location.name || '캠퍼스',
+          },
+          geometry: { type: 'Point', coordinates: [log.location.lng, log.location.lat] },
+        }));
+      src.setData({ type: 'FeatureCollection', features });
+    };
+
+    if (map.isStyleLoaded() && map.getStyle()?.layers) {
+      setupAndUpdate();
+    } else {
+      map.once('load', setupAndUpdate);
+    }
+  }, [practiceLogs]);
+
+  // pickMode 위치 핀 동기화
+  useEffect(() => {
+    if (!mapRef.current) return;
+    const map = mapRef.current;
+    const update = () => {
+      const src = map.getSource('pick-pin');
+      if (!src) return;
+      src.setData({
+        type: 'FeatureCollection',
+        features: pickedLocation ? [{
+          type: 'Feature',
+          properties: { name: pickedLocation.name || '' },
+          geometry: { type: 'Point', coordinates: [pickedLocation.lng, pickedLocation.lat] },
+        }] : [],
+      });
+    };
+    if (map.isStyleLoaded()) update();
+    else map.once('load', update);
+  }, [pickedLocation]);
+
+  // pickMode일 때 커서 변경
+  useEffect(() => {
+    if (!mapRef.current) return;
+    const canvas = mapRef.current.getCanvas();
+    if (pickMode) canvas.style.cursor = 'crosshair';
+  }, [pickMode]);
+
+  // 카메라 프리셋 변경 (단순화 — 항상 easeTo 직접 호출)
   useEffect(() => {
     if (!mapRef.current) return;
     const map = mapRef.current;
     const preset = CAMERA_PRESETS[cameraPreset] || CAMERA_PRESETS.iso;
     const move = () => {
-      map.easeTo({
-        center: INHA_CENTER,
-        zoom: preset.zoom,
-        pitch: preset.pitch,
-        bearing: preset.bearing,
-        duration: 650,
-      });
+      try {
+        map.easeTo({
+          center: INHA_CENTER,
+          zoom: preset.zoom,
+          pitch: preset.pitch,
+          bearing: preset.bearing,
+          duration: 650,
+        });
+      } catch (e) {
+        console.warn('[camera] easeTo 실패:', e);
+      }
     };
-    if (map.isStyleLoaded()) move();
-    else map.once('load', move);
+    // 로드 완료 여부와 관계없이 시도, 미완료면 load 이벤트에 백업 등록
+    move();
+    if (!map.loaded()) map.once('load', move);
   }, [cameraPreset]);
 
   // 커서 변경
