@@ -1,8 +1,35 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import CampusMap from './Map.jsx';
 import { PRACTICES, PRACTICE_CATEGORIES, PRACTICE_MAP } from './practices.js';
 import { classifyPractice } from './practiceClassifier.js';
-import { deletePracticeLog, loadPracticeLogs, savePracticeLog } from './storage.js';
+import { deletePracticeLog, loadPersonalLeaderboard, loadPracticeLogs, savePersonalLeaderboardEntry, savePracticeLog } from './storage.js';
+
+function PersonalLeaderboardPanel({ refreshKey }) {
+  const [entries, setEntries] = useState([]);
+  useEffect(() => { setEntries(loadPersonalLeaderboard()); }, [refreshKey]);
+  const rankClass = (r) => (r === 1 ? 'gold' : r === 2 ? 'silver' : r === 3 ? 'bronze' : '');
+  return (
+    <section className="scenario-panel" style={{ borderBottom: 'none' }}>
+      <div className="panel-title-row">
+        <h2 style={{ color: '#ffd33d' }}>🏆 개인 실천 리더보드</h2>
+      </div>
+      {entries.length === 0 && <div className="empty compact">아직 등록된 실천 기록이 없습니다</div>}
+      {entries.map((e) => (
+        <div key={e.id} className="entry">
+          <div className={'rank ' + rankClass(e.rank)}>#{e.rank}</div>
+          <div>
+            <div className="nick">{e.nickname}</div>
+            <div className="meta">
+              {e.practice_count}건 인증 · {e.created_at.slice(0, 10)}
+              {e.categories?.length ? ` · ${e.categories.slice(0, 3).join('/')}` : ''}
+            </div>
+          </div>
+          <div className="score">{e.total_saved_kg.toFixed(2)}<span style={{ fontSize: 10, color: '#8b949e' }}>kg</span></div>
+        </div>
+      ))}
+    </section>
+  );
+}
 
 function formatDateTime(iso) {
   try {
@@ -32,8 +59,10 @@ function LogDetailModal({ log, onClose, onDelete }) {
         )}
         <div className="log-modal-meta">
           <div className="log-modal-row">
-            <span className="log-modal-label">감축량</span>
-            <strong className="log-modal-co2">+{log.co2Saved} kgCO₂eq</strong>
+            <span className="log-modal-label">{(Number(log.co2Saved) || 0) < 0 ? '⚠️ 순배출 (역효과)' : '감축량'}</span>
+            <strong className="log-modal-co2" style={(Number(log.co2Saved) || 0) < 0 ? { color: '#ff7b72' } : {}}>
+              {((Number(log.co2Saved) || 0) >= 0 ? '+' : '') + log.co2Saved} kgCO₂eq
+            </strong>
           </div>
           <div className="log-modal-row">
             <span className="log-modal-label">📍 장소</span>
@@ -83,18 +112,30 @@ function AnalysisModal({ result, description, onClose, onConfirm }) {
 
         {!manualMode && detected ? (
           <>
-            <div className="ai-detected-card">
+            <div className={'ai-detected-card' + (detected.counterproductive ? ' ai-detected-counter' : '')}>
               <div className="ai-detected-icon">{detected.icon}</div>
               <div className="ai-detected-body">
-                <strong>{detected.label}</strong>
-                <span className="ai-detected-co2">+{detected.co2PerUnit} kgCO₂eq / {detected.unit}</span>
+                <strong>
+                  {detected.label}
+                  {detected.counterproductive && <span className="counter-warning-badge">⚠️ 역효과</span>}
+                </strong>
+                <span className="ai-detected-co2" style={detected.counterproductive ? { color: '#ff7b72' } : {}}>
+                  {(detected.co2PerUnit >= 0 ? '+' : '') + detected.co2PerUnit} kgCO₂eq / {detected.unit}
+                </span>
                 <span className="ai-detected-source">
                   근거: "{result.matchedKeyword}" 키워드 감지
                 </span>
+                {detected.counterproductive && detected.alternativeNote && (
+                  <span style={{ color: '#ff7b72', fontSize: 12, marginTop: 6 }}>
+                    💡 {detected.alternativeNote}
+                  </span>
+                )}
               </div>
             </div>
-            <p className="ai-hint">
-              "{description}" 라고 적으셔서, 위 활동으로 인식했어요. 맞나요?
+            <p className="ai-hint" style={detected.counterproductive ? { borderLeftColor: '#f85149', color: '#ff7b72' } : {}}>
+              {detected.counterproductive
+                ? `⚠️ "${description}" 는 친환경 의도지만 실제 LCA 분석 시 배출 증가로 분류돼요. 그래도 솔직히 기록할까요?`
+                : `"${description}" 라고 적으셔서, 위 활동으로 인식했어요. 맞나요?`}
             </p>
             <div className="ai-actions">
               <button
@@ -167,6 +208,8 @@ export default function PersonalTrack() {
   const [selectedLog, setSelectedLog] = useState(null);
   const [analysisResult, setAnalysisResult] = useState(null);
   const [cameraPreset, setCameraPreset] = useState('iso');
+  const [nickname, setNickname] = useState('');
+  const [leaderboardRefresh, setLeaderboardRefresh] = useState(0);
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
@@ -247,6 +290,20 @@ export default function PersonalTrack() {
 
   const totalSaved = logs.reduce((s, e) => s + (e.co2Saved || 0), 0);
 
+  const handleLeaderboardSubmit = () => {
+    if (logs.length === 0) return showToast('인증한 실천이 없습니다', 'error');
+    const submitNickname = nickname.trim() || '익명';
+    const categories = [...new Set(logs.map((l) => l.category).filter(Boolean))];
+    savePersonalLeaderboardEntry({
+      nickname: submitNickname,
+      totalSavedKg: totalSaved,
+      practiceCount: logs.length,
+      categories,
+    });
+    setLeaderboardRefresh((k) => k + 1);
+    showToast(`🏆 ${submitNickname} · ${totalSaved.toFixed(2)} kgCO₂eq 리더보드 등록!`);
+  };
+
   return (
     <div className="app">
       <aside className="sidebar">
@@ -272,16 +329,26 @@ export default function PersonalTrack() {
         </p>
         {PRACTICE_CATEGORIES.map((cat) => (
           <div key={cat.id} className="practice-ref-group">
-            <div className="practice-ref-title">{cat.icon} {cat.label}</div>
-            {PRACTICES.filter((p) => p.category === cat.id).map((p) => (
-              <div key={p.id} className="practice-ref-item">
-                <span className="practice-ref-icon">{p.icon}</span>
-                <div className="practice-ref-meta">
-                  <span className="practice-ref-label">{p.label}</span>
-                  <span className="practice-ref-co2">+{p.co2PerUnit} kgCO₂eq</span>
+            <div className="practice-ref-title" style={cat.id === 'counter' ? { color: '#ff7b72', background: '#2d1418' } : {}}>
+              {cat.icon} {cat.label}
+            </div>
+            {PRACTICES.filter((p) => p.category === cat.id).map((p) => {
+              const isCounter = p.counterproductive;
+              const signed = (p.co2PerUnit >= 0 ? '+' : '') + p.co2PerUnit;
+              return (
+                <div key={p.id} className={'practice-ref-item' + (isCounter ? ' practice-item-counter' : '')}>
+                  <span className="practice-ref-icon">{p.icon}</span>
+                  <div className="practice-ref-meta">
+                    <span className="practice-ref-label" style={isCounter ? { color: '#ff7b72' } : {}}>
+                      {p.label}
+                    </span>
+                    <span className="practice-ref-co2" style={isCounter ? { color: '#ff7b72' } : {}}>
+                      {signed} kgCO₂eq
+                    </span>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ))}
 
@@ -315,9 +382,11 @@ export default function PersonalTrack() {
 
         <div className="dashboard">
           <div className="metric-card">
-            <div className="metric-label">누적 감축량</div>
-            <div className="metric-value">{totalSaved.toFixed(2)}</div>
-            <div className="metric-sub">kgCO₂eq · {logs.length}건 기록</div>
+            <div className="metric-label">{totalSaved >= 0 ? '누적 감축량' : '⚠️ 누적 순배출 (역효과 우세)'}</div>
+            <div className={'metric-value' + (totalSaved < 0 ? ' negative' : '')}>
+              {totalSaved >= 0 ? '' : '+'}{Math.abs(totalSaved).toFixed(2)}
+            </div>
+            <div className="metric-sub">kgCO₂eq · {logs.length}건 기록{logs.filter((l) => l.co2Saved < 0).length > 0 ? ` (역효과 ${logs.filter((l) => l.co2Saved < 0).length}건 포함)` : ''}</div>
           </div>
           <div className="metric-card">
             <div className="metric-label">선택한 장소</div>
@@ -409,28 +478,60 @@ export default function PersonalTrack() {
           </div>
         </section>
 
-        <section className="scenario-panel" style={{ borderBottom: 'none' }}>
+        <section className="scenario-panel">
           <div className="panel-title-row">
             <h2>최근 기록 ({logs.length})</h2>
           </div>
           {logs.length === 0 && <div className="empty compact">아직 기록이 없습니다</div>}
-          {logs.slice(0, 8).map((entry) => (
-            <div
-              key={entry.id}
-              className="practice-log-entry"
-              role="button"
-              onClick={() => setSelectedLog(entry)}
-            >
-              {entry.photoPreview && (
-                <img src={entry.photoPreview} alt="" className="log-photo" />
-              )}
-              <div className="log-meta">
-                <strong>{entry.icon} {entry.practiceLabel}</strong>
-                <span>+{entry.co2Saved} kgCO₂eq · 📍 {entry.location?.name}</span>
+          {logs.slice(0, 6).map((entry) => {
+            const isCounter = (Number(entry.co2Saved) || 0) < 0;
+            const signed = (entry.co2Saved >= 0 ? '+' : '') + entry.co2Saved;
+            return (
+              <div
+                key={entry.id}
+                className={'practice-log-entry' + (isCounter ? ' practice-log-entry-counter' : '')}
+                role="button"
+                onClick={() => setSelectedLog(entry)}
+              >
+                {entry.photoPreview && (
+                  <img src={entry.photoPreview} alt="" className="log-photo" />
+                )}
+                <div className="log-meta">
+                  <strong style={isCounter ? { color: '#ff7b72' } : {}}>
+                    {entry.icon} {entry.practiceLabel}
+                    {isCounter && <span className="counter-warning-badge">역효과</span>}
+                  </strong>
+                  <span style={isCounter ? { color: '#ff7b72' } : {}}>
+                    {signed} kgCO₂eq · 📍 {entry.location?.name}
+                  </span>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </section>
+
+        <section className="scenario-panel">
+          <div className="panel-title-row">
+            <h2>리더보드 제출</h2>
+          </div>
+          <input
+            type="text"
+            placeholder="닉네임 (선택)"
+            value={nickname}
+            maxLength={20}
+            onChange={(e) => setNickname(e.target.value)}
+          />
+          <button
+            style={{ width: '100%', marginTop: 10 }}
+            onClick={handleLeaderboardSubmit}
+            disabled={!logs.length}
+            title={!logs.length ? '실천을 1개 이상 등록하면 제출 가능' : `누적 ${totalSaved.toFixed(2)} kgCO₂eq로 리더보드 등록`}
+          >
+            🏆 누적 {totalSaved.toFixed(2)} kg · 리더보드 등록
+          </button>
+        </section>
+
+        <PersonalLeaderboardPanel refreshKey={leaderboardRefresh} />
       </aside>
 
       <LogDetailModal log={selectedLog} onClose={() => setSelectedLog(null)} onDelete={handleDeleteLog} />

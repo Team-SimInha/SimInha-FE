@@ -1,4 +1,4 @@
-const REPORT_FORMAT_VERSION = 'inha-carbon-report.v1';
+const REPORT_FORMAT_VERSION = 'inha-carbon-report.v2';
 const DEFAULT_MODEL = 'solar-pro3';
 
 function sendJson(res, status, payload) {
@@ -16,12 +16,28 @@ function text(value, fallback = '') {
   return typeof value === 'string' && value.trim() ? value.trim() : fallback;
 }
 
-function list(value, fallback = []) {
+function list(value, fallback = [], limit = 3) {
   if (!Array.isArray(value)) return fallback;
   const normalized = value
     .filter((item) => typeof item === 'string' && item.trim())
     .map((item) => item.trim())
-    .slice(0, 3);
+    .slice(0, limit);
+  return normalized.length ? normalized : fallback;
+}
+
+function sections(value, fallback = []) {
+  if (!Array.isArray(value)) return fallback;
+  const normalized = value
+    .filter((item) => item && typeof item === 'object')
+    .map((item, index) => ({
+      heading: text(item.heading || item.title, `관찰 ${index + 1}`),
+      body: text(item.body || item.summary),
+      evidence: text(item.evidence),
+      action: text(item.action),
+      tone: text(item.tone || item.type, 'neutral'),
+    }))
+    .filter((item) => item.heading && item.body)
+    .slice(0, 5);
   return normalized.length ? normalized : fallback;
 }
 
@@ -108,6 +124,7 @@ function compactConstraints(metrics) {
       }))
       : [],
     doubleCountGuards: Array.isArray(c.doubleCountGuards) ? c.doubleCountGuards : [],
+    grossSavingKgCO2: number(metrics?.total?.grossSaving),
     embodiedPenaltyKgCO2: number(c.embodiedPenalty),
     diminishingPenaltyKgCO2: number(c.diminishingPenalty),
     synergyPenaltyKgCO2: number(c.synergyPenalty),
@@ -156,6 +173,15 @@ function compactScenario(payload) {
       costKrw: number(item.costKrw),
       savingKgCO2PerYear: number(item.savingKgCO2PerYear),
       energyKwhPerYear: number(item.energyKwhPerYear),
+      placementScore: number(item.placementScore || item.efficiencyRate || 100),
+      placementModifiers: Array.isArray(item.placementModifiers)
+        ? item.placementModifiers.slice(0, 4).map((m) => ({
+          label: m.label,
+          effectMultiplier: number(m.effectMultiplier || 1),
+          costMultiplier: number(m.costMultiplier || 1),
+          reason: m.reason || '',
+        }))
+        : [],
     }))
     : [];
 
@@ -165,6 +191,7 @@ function compactScenario(payload) {
       budgetKrw: budget,
       usedBudgetKrw: usedBudget,
       remainingBudgetKrw: number(metrics.remainingBudget || budget - usedBudget),
+      designYear: number(payload?.designYear || metrics.designYear),
     },
     metrics: {
       newPlacement: {
@@ -200,10 +227,24 @@ function promptFor(input) {
     '반환 필드는 정확히 다음 형태를 따른다:',
     JSON.stringify({
       formatVersion: REPORT_FORMAT_VERSION,
+      title: '시나리오 성격이 드러나는 짧은 제목',
+      headline: '리포트 첫 줄에 들어갈 판단 문장',
+      reportType: '옥상 발전 중심안 / 운영 효율 개선안 / 자연기반 보완안 / 충전 인프라 연계안 중 하나',
+      decisionQuestion: '담당자가 이 안을 볼 때 먼저 물어야 할 질문',
+      readerTakeaway: '한 줄 판단',
+      implementationMemo: '실무 검토 메모',
+      nextComparison: '다음에 비교할 대안',
+      focusTags: ['핵심 태그 1', '핵심 태그 2'],
       summary: '한 문단 요약',
-      strengths: ['잘한 점 1', '잘한 점 2'],
-      warnings: ['주의할 점 1', '주의할 점 2'],
-      recommendations: ['개선 제안 1', '개선 제안 2', '개선 제안 3'],
+      sections: [
+        {
+          heading: '구체적인 관찰 제목',
+          body: '사용자가 한 배치에 대한 해석',
+          evidence: '근거가 되는 위치/설비/수치',
+          action: '다음에 해볼 일',
+          tone: 'good | warn | action | neutral',
+        },
+      ],
       notes: ['유의 사항 1'],
     }, null, 2),
     '',
@@ -214,18 +255,25 @@ function promptFor(input) {
     '- summary 첫 문장에는 반드시 "신규 배치", "기존 설비", "총 절감량"을 각각 분리해서 쓴다.',
     '- items의 locationName, placementReason, efficiencyRate를 반영해 어디에 무엇을 배치했는지 구체적으로 언급한다.',
     '- 배치가 달라지면 문장도 달라져야 한다. 숫자만 바꾼 일반론을 쓰지 않는다.',
+    '- 시나리오가 옥상 발전 중심인지, 운영 효율 중심인지, 자연기반 보완안인지, 충전 인프라 연계안인지 먼저 판별하고 그 관점으로 문장을 바꾼다.',
+    '- title, headline, decisionQuestion, implementationMemo, nextComparison은 서로 다른 역할을 해야 한다. 같은 문장을 반복하지 않는다.',
+    '- 매번 "본 리포트는", "현재 시나리오는", "비용 대비" 같은 시작 표현만 반복하지 않는다. 설비명, 위치명, 위험요소, 의사결정 질문 중 하나로 문장을 시작해 변화를 준다.',
+    '- placementModifiers가 있으면 headline 또는 sections 중 하나에 반드시 반영한다.',
+    '- focusTags는 숫자만 나열하지 말고 시나리오 성격, 주요 위치, 핵심 리스크를 섞어서 2~4개 작성한다.',
+    '- sections는 정확히 4개를 작성한다. "잘한 점/부족한 점/개선 제안" 같은 고정 제목을 쓰지 말고, 입력에 맞는 관찰 제목을 자유롭게 만든다.',
+    '- sections의 body/evidence/action은 서로 다른 정보를 담는다. body는 해석, evidence는 근거, action은 다음 행동이다.',
     '- placementSummary.compactRows를 우선 참고해 핵심 배치 1~3개를 짚는다.',
     '- 설비 수량은 입력의 unit을 붙여 표현한다. 예: 태양광 5 kW, LED 20 개.',
     '- 숫자는 kgCO2/년, kWh/년, 원 단위를 유지한다.',
     '- 추정 데이터는 확정 사실처럼 말하지 않는다.',
-    '- strengths, warnings, recommendations, notes는 각각 1~3개로 제한한다.',
+    '- sections는 정확히 4개, notes는 1~3개로 제한한다.',
     '',
     '제약 / 트레이드오프 / 밀집도 규칙 (constraintSignals 와 densitySummary 활용):',
-    '- constraintSignals.greenSacrificePenaltyKgCO2 > 0 이면 녹지 훼손 트레이드오프를 warnings 또는 recommendations 에 반드시 명시한다. greenSacrificeBreakdown 의 zoneName 과 lossKgCO2 를 인용한다.',
-    '- constraintSignals.rooftopUsage 에서 utilizationPct >= 100 인 건물은 옥상 면적 초과로 warnings 에 강하게 언급한다 (각 항목의 reservePct·reserveNote 와 fixtureAreaM2·fixtures 를 인용해 노후/신축/의료 등 건물 유형별 점유율 차등 근거 [건축법 §119, 한국에너지공단 태양광 가이드, 소방기본법 §7] + 항공사진 관찰 fixture[실외기·물탱크·헬리포트 등]를 함께 명시). utilizationPct 85~99 는 주의 수준으로 언급한다.',
+    '- constraintSignals.greenSacrificePenaltyKgCO2 > 0 이면 녹지 훼손 트레이드오프를 sections 중 하나에 반드시 명시한다. greenSacrificeBreakdown 의 zoneName 과 lossKgCO2 를 인용한다.',
+    '- constraintSignals.rooftopUsage 에서 utilizationPct >= 100 인 건물은 옥상 면적 초과를 sections 중 하나에 강하게 언급한다 (각 항목의 reservePct·reserveNote 와 공식/시설팀 확인 fixtureAreaM2·fixtures 를 인용해 노후/신축/의료 등 건물 유형별 점유율 차등 근거 [건축법 §119, 한국에너지공단 태양광 가이드, 소방기본법 §7]를 함께 명시). utilizationPct 85~99 는 주의 수준으로 언급한다.',
     '- constraintSignals.doubleCountGuards 에 항목이 있으면 notes 에 "설치 인프라 효과만 카운트, 사용량/제3자 실적과 합산 금지" 라는 취지를 한 문장으로 포함한다 (특히 부지대여형 태양광, BEMS-LED 시너지).',
-    '- constraintSignals.embodiedPenaltyKgCO2 와 diminishingPenaltyKgCO2 가 grossSaving 의 25% 를 넘으면 warnings 에 "설치 탄소·수확체감으로 인한 효과 감쇄" 를 명시한다.',
-    '- densitySummary 의 상위 zoneName 1~2 곳을 인용해 배치 밀집·분산 패턴을 strengths 또는 recommendations 에 반영한다.',
+    '- constraintSignals.embodiedPenaltyKgCO2 와 diminishingPenaltyKgCO2 합계가 constraintSignals.grossSavingKgCO2 의 25% 를 넘으면 sections 에 "설치 탄소·수확체감으로 인한 효과 감쇄" 를 명시한다.',
+    '- densitySummary 의 상위 zoneName 1~2 곳을 인용해 배치 밀집·분산 패턴을 sections 에 반영한다.',
     '- 모든 수치는 공인 가이드라인(한국에너지공단·한전 배출계수·산림과학원·환경부 등) 기반 추정치임을 한 번 이상 notes 에 명시한다.',
     '- 학생 개인 실천(영수증·교통수단·생활 행동)에 대한 권고는 만들지 않는다. 정책·시설 의사결정 권고만 작성한다.',
     '',
@@ -246,12 +294,29 @@ function parseModelJson(content) {
 
 function fallback(input) {
   const nickname = input.scenario.nickname || '사용자';
+  const main = input.placementSummary?.compactRows?.[0];
+  const label = main?.label || '신규 설비';
+  const location = main?.location || '일반 구역';
   return {
     formatVersion: REPORT_FORMAT_VERSION,
+    title: '탄소중립 시나리오 검토 메모',
+    headline: `${location}의 ${label} 배치를 중심으로 다시 확인해야 합니다.`,
+    reportType: '정책 검토안',
+    decisionQuestion: '이 배치가 실제 설치 우선순위로 설명될 수 있는가?',
+    readerTakeaway: '숫자와 배치 근거를 분리해 읽어야 하는 안입니다.',
+    implementationMemo: `${location} 현장 조건과 예산 사용률을 먼저 확인하세요.`,
+    nextComparison: '같은 예산으로 저위험 분산 배치안을 하나 더 비교하세요.',
+    focusTags: ['계산 기반 리포트', location, label],
     summary: `${nickname} 시나리오는 신규 배치와 기존 설비 베이스라인을 분리해 해석해야 합니다.`,
-    strengths: ['계산 지표를 기준으로 신규 배치 성과를 확인할 수 있습니다.'],
-    warnings: ['일부 데이터는 MVP 추정값이므로 실제 자료로 보정이 필요합니다.'],
-    recommendations: ['비용 대비 절감 효율이 높은 설비를 우선 확대하세요.'],
+    sections: [
+      {
+        heading: `${location} 배치를 먼저 보세요`,
+        body: `${label}이 이 시나리오의 해석 중심입니다.`,
+        evidence: `${location} / ${label}`,
+        action: '같은 예산으로 분산 배치안을 하나 더 비교하세요.',
+        tone: 'neutral',
+      },
+    ],
     notes: ['본 리포트는 시뮬레이션 데이터를 기준으로 생성되었습니다.'],
   };
 }
@@ -284,7 +349,8 @@ export default async function handler(req, res) {
           { role: 'system', content: 'You return strict JSON only. Do not wrap JSON in markdown fences.' },
           { role: 'user', content: promptFor(input) },
         ],
-        temperature: 0.2,
+        temperature: 0.55,
+        top_p: 0.9,
         stream: false,
       }),
     });
@@ -301,10 +367,16 @@ export default async function handler(req, res) {
     const defaults = fallback(input);
     sendJson(res, 200, {
       formatVersion: REPORT_FORMAT_VERSION,
+      title: text(parsed.title, defaults.title),
+      headline: text(parsed.headline, defaults.headline),
+      reportType: text(parsed.reportType, defaults.reportType),
+      decisionQuestion: text(parsed.decisionQuestion, defaults.decisionQuestion),
+      readerTakeaway: text(parsed.readerTakeaway, defaults.readerTakeaway),
+      implementationMemo: text(parsed.implementationMemo, defaults.implementationMemo),
+      nextComparison: text(parsed.nextComparison, defaults.nextComparison),
+      focusTags: list(parsed.focusTags, defaults.focusTags, 4),
       summary: text(parsed.summary, defaults.summary),
-      strengths: list(parsed.strengths, defaults.strengths),
-      warnings: list(parsed.warnings, defaults.warnings),
-      recommendations: list(parsed.recommendations, defaults.recommendations),
+      sections: sections(parsed.sections, defaults.sections),
       notes: list(parsed.notes, defaults.notes),
       createdAt: new Date().toISOString(),
       model,

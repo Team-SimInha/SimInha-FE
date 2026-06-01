@@ -7,6 +7,124 @@
 import { INHA_BUILDINGS } from './inha_buildings.js';
 import { BUILDING_ROOFTOP_FIXTURES } from './preinstalled.js';
 
+const METERS_PER_DEG_LAT = 111320;
+
+function metersPerDegLng(lat) {
+  return METERS_PER_DEG_LAT * Math.cos((lat * Math.PI) / 180);
+}
+
+function corridorPolygon(points, widthM = 10) {
+  if (!Array.isArray(points) || points.length < 2) return points || [];
+  const base = points[0];
+  const lngM = metersPerDegLng(base[1]);
+  const xy = points.map(([lng, lat]) => ({
+    x: (lng - base[0]) * lngM,
+    y: (lat - base[1]) * METERS_PER_DEG_LAT,
+  }));
+
+  const normalAt = (idx) => {
+    const normals = [];
+    if (idx > 0) {
+      const prev = xy[idx - 1];
+      const cur = xy[idx];
+      const dx = cur.x - prev.x;
+      const dy = cur.y - prev.y;
+      const len = Math.hypot(dx, dy) || 1;
+      normals.push({ x: -dy / len, y: dx / len });
+    }
+    if (idx < xy.length - 1) {
+      const cur = xy[idx];
+      const next = xy[idx + 1];
+      const dx = next.x - cur.x;
+      const dy = next.y - cur.y;
+      const len = Math.hypot(dx, dy) || 1;
+      normals.push({ x: -dy / len, y: dx / len });
+    }
+    const x = normals.reduce((sum, n) => sum + n.x, 0);
+    const y = normals.reduce((sum, n) => sum + n.y, 0);
+    const len = Math.hypot(x, y) || 1;
+    return { x: x / len, y: y / len };
+  };
+
+  const half = widthM / 2;
+  const left = xy.map((p, idx) => {
+    const n = normalAt(idx);
+    return [
+      base[0] + (p.x + n.x * half) / lngM,
+      base[1] + (p.y + n.y * half) / METERS_PER_DEG_LAT,
+    ];
+  });
+  const right = xy.map((p, idx) => {
+    const n = normalAt(idx);
+    return [
+      base[0] + (p.x - n.x * half) / lngM,
+      base[1] + (p.y - n.y * half) / METERS_PER_DEG_LAT,
+    ];
+  }).reverse();
+  return [...left, ...right];
+}
+
+export const CAMPUS_ROAD_CENTERLINES = [
+  {
+    id: 'road_front_gate',
+    name: '정문 진입로',
+    widthM: 15,
+    coordinates: [[126.65425, 37.44772], [126.65434, 37.44818], [126.65436, 37.44874], [126.65425, 37.44915]],
+  },
+  {
+    id: 'road_field_west_edge',
+    name: '대운동장 서측 보행로',
+    widthM: 8,
+    coordinates: [[126.65070, 37.45020], [126.65073, 37.45068], [126.65084, 37.45108]],
+  },
+  {
+    id: 'road_field_north_edge',
+    name: '대운동장 북측 보행로',
+    widthM: 9,
+    coordinates: [[126.65095, 37.45105], [126.65155, 37.45108], [126.65220, 37.45103]],
+  },
+  {
+    id: 'road_library_east_gap',
+    name: '정석학술정보관 동측 보행로',
+    widthM: 8,
+    coordinates: [[126.65312, 37.44905], [126.65338, 37.44920], [126.65362, 37.44936]],
+  },
+  {
+    id: 'road_main_south',
+    name: '본관 남측 보행로',
+    widthM: 8,
+    coordinates: [[126.65330, 37.44900], [126.65365, 37.44892], [126.65405, 37.44886], [126.65448, 37.44890]],
+  },
+  {
+    id: 'road_lake_south',
+    name: '인경호 남측 보행로',
+    widthM: 8,
+    coordinates: [[126.65518, 37.44938], [126.65555, 37.44932], [126.65598, 37.44935], [126.65625, 37.44947]],
+  },
+  {
+    id: 'road_hitech_east_outer',
+    name: '하이테크센터 동측 보행로',
+    widthM: 7,
+    coordinates: [[126.65910, 37.45002], [126.65922, 37.45030], [126.65916, 37.45058]],
+  },
+  {
+    id: 'road_engineering_west_gap',
+    name: '공학관 서측 보행로',
+    widthM: 7,
+    coordinates: [[126.65665, 37.44872], [126.65675, 37.44893], [126.65678, 37.44908]],
+  },
+];
+
+function roadZone(road) {
+  return {
+    id: road.id,
+    name: road.name,
+    type: 'main_road',
+    note: '캠퍼스맵·OSM 도로망을 기준으로 보정한 주요 차량/보행 혼합 동선',
+    polygon: corridorPolygon(road.coordinates, road.widthM),
+  };
+}
+
 // ─── 구역 유형 ───
 // old_building   : 1970~80년대 노후 건물 (구조하중 부족)
 // new_building   : 2000년대 이후 신축 (대부분 설치 가능)
@@ -223,15 +341,23 @@ export const CAMPUS_ZONES = [
   */
 
   // ===========================================================
-  // 인경호 (실제 위치 추정 — 본관 동측, 학생회관 남측)
+  // 인경호 (북서 이동 + 중심점 기준 반시계 45° 회전)
+  // — 중심 (126.65600, 37.44960) 유지, 위경도 보정 회전 적용
   // ===========================================================
   {
     id: 'lake_ingyeong', name: '인경호', type: 'water',
     note: '캠퍼스 중앙 호수, 학생 휴식공간',
     polygon: [
-      [126.65543,37.44895],[126.65560,37.44890],[126.65580,37.44888],[126.65595,37.44892],
-      [126.65605,37.44900],[126.65608,37.44912],[126.65602,37.44920],[126.65588,37.44922],
-      [126.65570,37.44920],[126.65555,37.44915],[126.65545,37.44908],[126.65540,37.44900],
+      [126.65590, 37.44954],
+      [126.65600, 37.44962],
+      [126.65613, 37.44981],
+      [126.65608, 37.44995],
+      [126.65595, 37.45003],
+      [126.65579, 37.45004],
+      [126.65560, 37.44989],
+      [126.65558, 37.44974],
+      [126.65564, 37.44962],
+      [126.65574, 37.44955],
     ],
   },
 
@@ -241,27 +367,17 @@ export const CAMPUS_ZONES = [
   {
     id: 'sports_field', name: '대운동장', type: 'sports',
     polygon: [
-      [126.65840,37.44760],[126.65920,37.44760],[126.65920,37.44820],[126.65840,37.44820],
+      [126.65088,37.45025],
+      [126.65242,37.45025],
+      [126.65242,37.45112],
+      [126.65088,37.45112],
     ],
   },
 
   // ===========================================================
-  // 주도로 (지중 송전선 매립 — 정문 ~ 본관, 캠퍼스 메인 동선)
+  // 주도로 (정문·본관·정석·인경호·공학관·기숙사 주요 동선)
   // ===========================================================
-  {
-    id: 'road_main', name: '메인 진입로', type: 'main_road',
-    note: '한전 지중 고압송전선 매립, 상하수도·통신관로',
-    polygon: [
-      [126.65430,37.44820],[126.65460,37.44820],[126.65460,37.44910],[126.65430,37.44910],
-    ],
-  },
-  {
-    id: 'road_central', name: '중앙 도로', type: 'main_road',
-    note: '지중 송전선·매설관로',
-    polygon: [
-      [126.65300,37.44895],[126.65670,37.44895],[126.65670,37.44907],[126.65300,37.44907],
-    ],
-  },
+  ...CAMPUS_ROAD_CENTERLINES.map(roadZone),
 
   // ===========================================================
   // 주차장
@@ -291,7 +407,8 @@ export const CAMPUS_ZONES = [
   {
     id: 'green_lakeside', name: '인경호 주변 녹지', type: 'green',
     polygon: [
-      [126.65520,37.44875],[126.65625,37.44875],[126.65625,37.44935],[126.65520,37.44935],
+      [126.65520, 37.44875], [126.65670, 37.44875],
+      [126.65670, 37.44990], [126.65520, 37.44990],
     ],
   },
   {
@@ -333,14 +450,13 @@ export const CAMPUS_ZONES = [
 
 // ─── 장식용 나무 (시각효과 전용, 사용자 배치 X) ───
 export const DECORATIVE_TREES = [
-  // 인경호 둘레 (조밀하게)
-  { lng: 126.65540, lat: 37.44892 }, { lng: 126.65548, lat: 37.44888 },
-  { lng: 126.65560, lat: 37.44886 }, { lng: 126.65575, lat: 37.44885 },
-  { lng: 126.65590, lat: 37.44888 }, { lng: 126.65603, lat: 37.44895 },
-  { lng: 126.65610, lat: 37.44906 }, { lng: 126.65610, lat: 37.44918 },
-  { lng: 126.65603, lat: 37.44925 }, { lng: 126.65590, lat: 37.44927 },
-  { lng: 126.65575, lat: 37.44925 }, { lng: 126.65560, lat: 37.44922 },
-  { lng: 126.65548, lat: 37.44915 }, { lng: 126.65540, lat: 37.44907 },
+  // 인경호 둘레 (학생회관 방향 +6m E -7m S)
+  { lng: 126.65583, lat: 37.44949 }, { lng: 126.65595, lat: 37.44957 },
+  { lng: 126.65613, lat: 37.44973 }, { lng: 126.65618, lat: 37.44985 },
+  { lng: 126.65613, lat: 37.44997 }, { lng: 126.65600, lat: 37.45005 },
+  { lng: 126.65585, lat: 37.45007 }, { lng: 126.65573, lat: 37.45003 },
+  { lng: 126.65554, lat: 37.44986 }, { lng: 126.65551, lat: 37.44975 },
+  { lng: 126.65558, lat: 37.44963 }, { lng: 126.65568, lat: 37.44953 },
   // 본관 앞 녹지
   { lng: 126.65360, lat: 37.44935 }, { lng: 126.65360, lat: 37.44950 },
   { lng: 126.65360, lat: 37.44970 }, { lng: 126.65380, lat: 37.44980 },
@@ -359,9 +475,9 @@ export const DECORATIVE_TREES = [
   { lng: 126.65720, lat: 37.44882 }, { lng: 126.65750, lat: 37.44882 },
   { lng: 126.65780, lat: 37.44855 }, { lng: 126.65820, lat: 37.44930 },
   // 운동장 주변
-  { lng: 126.65835, lat: 37.44762 }, { lng: 126.65835, lat: 37.44790 },
-  { lng: 126.65835, lat: 37.44820 }, { lng: 126.65925, lat: 37.44762 },
-  { lng: 126.65925, lat: 37.44790 }, { lng: 126.65925, lat: 37.44820 },
+  { lng: 126.65082, lat: 37.45028 }, { lng: 126.65082, lat: 37.45072 },
+  { lng: 126.65082, lat: 37.45112 }, { lng: 126.65248, lat: 37.45028 },
+  { lng: 126.65248, lat: 37.45072 }, { lng: 126.65248, lat: 37.45112 },
   // 비룡재 (기숙사) 주변
   { lng: 126.65940, lat: 37.44705 }, { lng: 126.65980, lat: 37.44820 },
   { lng: 126.65920, lat: 37.44820 }, { lng: 126.66000, lat: 37.44760 },
@@ -383,19 +499,18 @@ export const DECORATIVE_TREES = [
 export const WALKWAYS = [
   // 인경호 둘레길
   { id: 'walk_lake', coordinates: [
-    [126.65543,37.44895],[126.65560,37.44890],[126.65580,37.44888],[126.65595,37.44892],
-    [126.65605,37.44900],[126.65608,37.44912],[126.65602,37.44920],[126.65588,37.44922],
-    [126.65570,37.44920],[126.65555,37.44915],[126.65545,37.44908],[126.65540,37.44900],
-    [126.65543,37.44895],
+    [126.65552, 37.44970], [126.65583, 37.44988], [126.65612, 37.44970],
+    [126.65606, 37.44943], [126.65570, 37.44935], [126.65542, 37.44947],
+    [126.65552, 37.44970],
   ]},
-  // 정석학술정보관 → 본관
-  { id: 'walk_lib_main', coordinates: [[126.65275,37.44950],[126.65340,37.44950],[126.65395,37.44943]] },
-  // 본관 → 인경호 → 학생회관
-  { id: 'walk_main_lake', coordinates: [[126.65450,37.44940],[126.65540,37.44910],[126.65625,37.44960]] },
-  // 학생회관 → 60주년기념관
-  { id: 'walk_student_60th', coordinates: [[126.65670,37.44970],[126.65500,37.45030],[126.65420,37.45070]] },
-  // 정문 → 본관
-  { id: 'walk_front_main', coordinates: [[126.65445,37.44800],[126.65445,37.44910]] },
+  // 정석학술정보관 동측 열린 보행축
+  { id: 'walk_library_gap', coordinates: [[126.65312,37.44913],[126.65344,37.44928],[126.65372,37.44942]] },
+  // 대운동장-중앙광장 사이 보행축
+  { id: 'walk_field_plaza', coordinates: [[126.65205,37.45055],[126.65265,37.45045],[126.65330,37.45030]] },
+  // 본관 남측-인경호 진입 보행축
+  { id: 'walk_main_lake_south', coordinates: [[126.65440,37.44888],[126.65482,37.44896],[126.65516,37.44920]] },
+  // 공학관 사이 짧은 보행축
+  { id: 'walk_engineering_gap', coordinates: [[126.65778,37.44872],[126.65818,37.44872],[126.65844,37.44890]] },
 ];
 
 
@@ -515,6 +630,101 @@ const RULES = {
   },
 };
 
+function withPlacementModifiers(itemType, baseRule, zone) {
+  const result = {
+    ...baseRule,
+    penalty: baseRule.penalty || 1,
+    costMultiplier: baseRule.costMultiplier || 1,
+    placementScore: 100,
+    modifiers: [],
+  };
+  if (!zone) return result;
+
+  const addModifier = ({ label, effectMultiplier = 1, costMultiplier = 1, reason, source }) => {
+    result.penalty *= effectMultiplier;
+    result.costMultiplier *= costMultiplier;
+    result.modifiers.push({ label, effectMultiplier, costMultiplier, reason, source });
+  };
+
+  const height = Number(zone.height || 0);
+  const floors = Number(zone.floors || 0);
+
+  if (itemType === 'solar_self' && ['old_building', 'new_building', 'solar_building', 'hospital', 'auxiliary'].includes(zone.type)) {
+    if (height >= 45 || floors >= 12) {
+      addModifier({
+        label: '고층 옥상 보정',
+        effectMultiplier: 1.06,
+        costMultiplier: 1.08,
+        reason: '주변 음영 회피 가능성이 높아 발전성은 보정하되, 양중·추락방지·안전관리 비용을 함께 반영',
+        source: 'K-Taxonomy 태양광 이용률 산식 + 한국에너지공단 태양광 설치 시 음영·통로 검토 원칙',
+      });
+    } else if (height >= 25 || floors >= 7) {
+      addModifier({
+        label: '중층 옥상 보정',
+        effectMultiplier: 1.03,
+        costMultiplier: 1.04,
+        reason: '저층보다 음영 간섭이 작을 가능성을 보정하고, 장비 반입 비용을 소폭 가산',
+        source: 'K-Taxonomy 태양광 이용률 산식 + 건축물 옥상 설치 안전관리 원칙',
+      });
+    }
+  }
+
+  if (itemType === 'solar_bipv' && ['new_building', 'solar_building', 'hospital'].includes(zone.type) && (height >= 30 || floors >= 8)) {
+    addModifier({
+      label: '고층 외피 보정',
+      effectMultiplier: 1.04,
+      costMultiplier: 1.06,
+      reason: '고층 외피의 노출 면적 활용성을 반영하되, 외장재 시공 난이도와 안전비를 가산',
+      source: '산업통상자원부 BIPV 산업생태계 활성화 방안 + KS C 8577 성능평가 기준',
+    });
+  }
+
+  if ((itemType === 'led' || itemType === 'bems') && ['old_building', 'new_building', 'solar_building', 'hospital'].includes(zone.type) && floors >= 8) {
+    addModifier({
+      label: '운영부하 보정',
+      effectMultiplier: itemType === 'bems' ? 1.08 : 1.04,
+      costMultiplier: itemType === 'bems' ? 1.03 : 1.01,
+      reason: '층수가 높은 다중이용 건물은 공조·조명 운영부하가 커 관리 설비의 개선 여지가 큰 것으로 보수 반영',
+      source: '한국에너지공단 BEMS 설치확인 기준 + 국토교통부 건물에너지 사용량 원단위 공개자료',
+    });
+  }
+
+  if (itemType === 'ev') {
+    if (zone.id === 'park_front' || zone.id === 'park_rear' || zone.id === 'park_dorm') {
+      addModifier({
+        label: '이동 접근성 보정',
+        effectMultiplier: zone.id === 'park_front' ? 1.12 : 1.07,
+        costMultiplier: 1.02,
+        reason: '주차장·정문권 등 접근성이 높은 구역은 충전 설비 이용 가능성이 높다고 보고 점수를 보정',
+        source: '기후에너지환경부 무공해차 충전인프라 보급 정책 + 실측 유동량 확보 전 위치 프록시',
+      });
+    } else if (zone.type === 'main_road') {
+      addModifier({
+        label: '도로변 접근성 보정',
+        effectMultiplier: 1.05,
+        costMultiplier: 1.08,
+        reason: '노상 접근성은 높지만 보행안전·전기 인입 공사 난이도 때문에 비용을 더 크게 가산',
+        source: '기후에너지환경부 충전인프라 보급 정책 + 보행안전 검토 원칙',
+      });
+    }
+  }
+
+  result.penalty = Math.round(result.penalty * 1000) / 1000;
+  result.costMultiplier = Math.round(result.costMultiplier * 1000) / 1000;
+  result.placementScore = Math.round(result.penalty * 100);
+
+  if (result.modifiers.length > 0) {
+    const notes = result.modifiers.map((m) => {
+      const effect = m.effectMultiplier !== 1 ? `효율 ${Math.round(m.effectMultiplier * 100)}%` : '';
+      const cost = m.costMultiplier !== 1 ? `비용 ${Math.round(m.costMultiplier * 100)}%` : '';
+      return `${m.label}(${[effect, cost].filter(Boolean).join(', ')})`;
+    }).join(' · ');
+    result.reason = `${result.reason} · ${notes}`;
+  }
+
+  return result;
+}
+
 
 // ─── 점-다각형 포함 판정 ───
 function pointInRing(lng, lat, ring) {
@@ -584,11 +794,15 @@ export function getRooftopReserveByZone(zoneId) {
   return { ...entry, type: zone.type };
 }
 
-// 항공사진에 보이는 명시적 옥상 설비(실외기·물탱크·헬리포트 등) 점유면적
-// generic reserve 와 별도로 BUILDING_ROOFTOP_FIXTURES 에서 차감
+// 실측으로 확인된 명시적 옥상 설비(실외기·물탱크·헬리포트 등) 점유면적.
+// 공인/시설팀 확인 전 공개 항공사진 기반 추정치는 계산에서 제외한다.
+const USE_UNVERIFIED_ROOFTOP_FIXTURES = false;
 export function getBuildingRooftopFixtures(zoneId) {
   const entry = BUILDING_ROOFTOP_FIXTURES.find((b) => b.buildingId === zoneId);
   if (!entry) return { areaM2: 0, fixtures: [], source: null };
+  if (!USE_UNVERIFIED_ROOFTOP_FIXTURES && entry.dataQuality !== 'official') {
+    return { areaM2: 0, fixtures: [], source: null };
+  }
   const areaM2 = entry.fixtures.reduce((s, f) => s + (Number(f.areaM2) || 0), 0);
   return { areaM2, fixtures: entry.fixtures, source: entry.source, name: entry.name };
 }
@@ -616,13 +830,17 @@ export function checkPlacement(itemType, lng, lat) {
   if (zone) {
     const rule = rules[zone.type] || rules._default;
     if (rule) {
+      const withModifiers = withPlacementModifiers(itemType, rule, zone);
       return {
-        allowed: rule.allowed,
-        reason: rule.reason,
+        allowed: withModifiers.allowed,
+        reason: withModifiers.reason,
         zone,
-        penalty: rule.penalty,
-        bonus: rule.bonus,
-        greenSacrifice: rule.greenSacrifice || false,
+        penalty: withModifiers.penalty,
+        bonus: withModifiers.bonus,
+        costMultiplier: withModifiers.costMultiplier,
+        placementScore: withModifiers.placementScore,
+        modifiers: withModifiers.modifiers,
+        greenSacrifice: withModifiers.greenSacrifice || false,
       };
     }
     return { allowed: true, reason: '✅ 일반 구역 — 설치 가능', zone };
@@ -631,13 +849,17 @@ export function checkPlacement(itemType, lng, lat) {
   // 정의된 zone 바깥 (일반 바닥) — _noZone 우선, 없으면 _default 적용
   const noZoneRule = rules._noZone || rules._default;
   if (noZoneRule) {
+    const withModifiers = withPlacementModifiers(itemType, noZoneRule, null);
     return {
-      allowed: noZoneRule.allowed,
-      reason: noZoneRule.reason,
+      allowed: withModifiers.allowed,
+      reason: withModifiers.reason,
       zone: null,
-      penalty: noZoneRule.penalty,
-      bonus: noZoneRule.bonus,
-      greenSacrifice: noZoneRule.greenSacrifice || false,
+      penalty: withModifiers.penalty,
+      bonus: withModifiers.bonus,
+      costMultiplier: withModifiers.costMultiplier,
+      placementScore: withModifiers.placementScore,
+      modifiers: withModifiers.modifiers,
+      greenSacrifice: withModifiers.greenSacrifice || false,
     };
   }
   return { allowed: true, reason: '✅ 일반 바닥 — 설치 가능', zone: null };

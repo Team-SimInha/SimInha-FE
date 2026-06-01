@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { ITEM_MAP, buildItemPolygon, buildPolePolygon } from './items.js';
-import { CAMPUS_ZONES, DECORATIVE_TREES, WALKWAYS } from './zones.js';
+import { CAMPUS_ZONES, DECORATIVE_TREES } from './zones.js';
 import { CAMPUS_POLYS, INHA_BUILDINGS } from './inha_buildings.js';
 
 // 캠퍼스 건물의 OSM way ID — OSM 배경 레이어에서 이 ID들은 제외해서 z-fighting 방지
@@ -192,6 +192,7 @@ export default function CampusMap({
   items,
   preinstalledItems = [],
   showPreinstalled = true,
+  highlightMapRoads = true,
   cameraPreset = 'iso',
   onPlace,
   onRemove,
@@ -254,13 +255,11 @@ export default function CampusMap({
         (l) => l.type === 'symbol' && l.layout && l.layout['text-field']
       )?.id;
 
-      // ── 사용자가 지정한 OSM 타일 ID 별 건물 색상/이름 (대체 분류) ──
-      // OpenMapTiles는 캠퍼스 일부 건물에 합성 ID를 부여하므로 Overpass 데이터에 없음.
-      // 사용자가 호버해서 알려준 ID를 여기에 넣으면 빨강/녹색/노랑으로 도색됨.
-      const TILE_ID_OVERRIDES = {
-        // 사용자 지정: 큰 안뜰 건물 = 인하대 5호관 (태양광 설치 추정)
-        31492463: { type: 'solar_building', name: '5호관 (인하대)', color: '#ffd633' },
-      };
+      // ── 배경 타일 건물 오버라이드 ──
+      // 캠퍼스 주요 건물은 inha_buildings.js의 OSM footprint를 우선 사용한다.
+      // 과거 임시로 지정했던 타일 ID 기반 5호관 라벨은 실제 건물 폴리곤과
+      // 중복/오인될 수 있어 비워둔다.
+      const TILE_ID_OVERRIDES = {};
       const TILE_OLD_IDS = Object.keys(TILE_ID_OVERRIDES)
         .filter(k => TILE_ID_OVERRIDES[k].type === 'old_building').map(Number);
       const TILE_NEW_IDS = Object.keys(TILE_ID_OVERRIDES)
@@ -460,13 +459,21 @@ export default function CampusMap({
       // 비건물·비호수 지면
       map.addLayer({
         id: 'zones-ground-fill', type: 'fill', source: 'campus-zones',
-        filter: ['all', ['==', ['get', 'isBuilding'], false], ['!=', ['get', 'zoneType'], 'water']],
+        filter: ['all',
+          ['==', ['get', 'isBuilding'], false],
+          ['!=', ['get', 'zoneType'], 'water'],
+          ['!=', ['get', 'zoneType'], 'main_road'],
+        ],
         paint: { 'fill-color': groundColorExpr, 'fill-opacity': 0.6 },
       });
       // 비건물 외곽선 (점선)
       map.addLayer({
         id: 'zones-line-nonbldg', type: 'line', source: 'campus-zones',
-        filter: ['all', ['!=', ['get', 'zoneType'], 'water'], ['==', ['get', 'isBuilding'], false]],
+        filter: ['all',
+          ['!=', ['get', 'zoneType'], 'water'],
+          ['!=', ['get', 'zoneType'], 'main_road'],
+          ['==', ['get', 'isBuilding'], false],
+        ],
         paint: {
           'line-color': lineColorExpr,
           'line-width': 2,
@@ -485,21 +492,49 @@ export default function CampusMap({
         },
       });
 
-      // 산책로
-      map.addSource('walkways', {
-        type: 'geojson',
-        data: {
-          type: 'FeatureCollection',
-          features: WALKWAYS.map((w) => ({
-            type: 'Feature', properties: { id: w.id },
-            geometry: { type: 'LineString', coordinates: w.coordinates },
-          })),
-        },
-      });
-      map.addLayer({
-        id: 'walkways-line', type: 'line', source: 'walkways',
-        paint: { 'line-color': '#c9b88a', 'line-width': 2.5, 'line-opacity': 0.52 },
-      });
+      // 기본 지도에 이미 있는 도로/보행로를 강조한다.
+      // 별도 수동 선을 그리지 않고 OpenFreeMap transportation 벡터를 재사용한다.
+      if (map.getSource('openmaptiles')) {
+        const campusRouteFilter = ['all',
+          ['match', ['geometry-type'], ['LineString', 'MultiLineString'], true, false],
+          ['match', ['get', 'class'], ['path', 'minor', 'service', 'track'], true, false],
+        ];
+        map.addLayer({
+          id: 'campus-basemap-road-casing',
+          type: 'line',
+          source: 'openmaptiles',
+          'source-layer': 'transportation',
+          filter: campusRouteFilter,
+          layout: {
+            'line-cap': 'round',
+            'line-join': 'round',
+            'visibility': highlightMapRoads ? 'visible' : 'none',
+          },
+          paint: {
+            'line-color': '#05070a',
+            'line-width': ['interpolate', ['linear'], ['zoom'], 15, 2.4, 17, 4.8, 20, 8.5],
+            'line-opacity': 0.5,
+            'line-blur': 0.4,
+          },
+        });
+        map.addLayer({
+          id: 'campus-basemap-road-line',
+          type: 'line',
+          source: 'openmaptiles',
+          'source-layer': 'transportation',
+          filter: campusRouteFilter,
+          layout: {
+            'line-cap': 'round',
+            'line-join': 'round',
+            'visibility': highlightMapRoads ? 'visible' : 'none',
+          },
+          paint: {
+            'line-color': '#4b5968',
+            'line-width': ['interpolate', ['linear'], ['zoom'], 15, 1.2, 17, 2.6, 20, 5.2],
+            'line-opacity': 0.92,
+          },
+        });
+      }
 
       // ── 인하대 정의 건물 (3D) ──
       map.addSource('campus-buildings', { type: 'geojson', data: buildingsGeoJSON() });
@@ -670,6 +705,7 @@ export default function CampusMap({
       // OpenFreeMap은 Noto Sans, Mapbox는 Open Sans → 둘 다 폴백 시도
       map.addLayer({
         id: 'zones-label', type: 'symbol', source: 'campus-zones',
+        filter: ['!=', ['get', 'zoneType'], 'main_road'],
         layout: {
           'text-field': ['get', 'name'],
           'text-size': ['case', ['==', ['get', 'isBuilding'], true], 12, 11],
@@ -881,12 +917,7 @@ export default function CampusMap({
 
       // pickMode: 위치만 선택 (개인 실천 트랙)
       if (pickModeRef.current) {
-        // 실천 기록 배지 클릭이면 상세 모달 열기
-        const logHits = map.queryRenderedFeatures(e.point, { layers: ['practice-logs-bg', 'practice-logs-icon'] });
-        if (logHits.length > 0) {
-          onLogClickRef.current?.(logHits[0].properties.id);
-          return;
-        }
+        // 실천 기록 핀은 HTML marker 라 별도 click 핸들러가 처리 — 여기선 무시
         let locationName = '캠퍼스 일반 구역';
         const bldHits = map.queryRenderedFeatures(e.point, { layers: ['campus-buildings-3d'] });
         if (bldHits.length > 0) {
@@ -962,81 +993,56 @@ export default function CampusMap({
     else map.once('load', update);
   }, [preinstalledItems, showPreinstalled]);
 
-  // 실천 기록 배지 setup + 동기화 (idempotent)
+  // 실천 기록 — HTML marker 로 렌더 (사진 박힌 3D 핀)
+  const practiceMarkersRef = useRef([]);
   useEffect(() => {
     if (!mapRef.current) return;
     const map = mapRef.current;
 
-    const setupAndUpdate = () => {
-      try {
-        // 소스 없으면 추가
-        if (!map.getSource('practice-logs')) {
-          map.addSource('practice-logs', {
-            type: 'geojson',
-            data: { type: 'FeatureCollection', features: [] },
-          });
-        }
-        // 배경 원 레이어
-        if (!map.getLayer('practice-logs-bg')) {
-          map.addLayer({
-            id: 'practice-logs-bg',
-            type: 'circle',
-            source: 'practice-logs',
-            paint: {
-              'circle-radius': 18,
-              'circle-color': '#ffffff',
-              'circle-stroke-color': '#7ee787',
-              'circle-stroke-width': 2.5,
-              'circle-opacity': 0.95,
-            },
-          });
-          map.on('mouseenter', 'practice-logs-bg', () => { map.getCanvas().style.cursor = 'pointer'; });
-          map.on('mouseleave', 'practice-logs-bg', () => {
-            map.getCanvas().style.cursor = pickModeRef.current ? 'crosshair' : '';
-          });
-        }
-        // 이모지 심볼 레이어
-        if (!map.getLayer('practice-logs-icon')) {
-          map.addLayer({
-            id: 'practice-logs-icon',
-            type: 'symbol',
-            source: 'practice-logs',
-            layout: {
-              'text-field': ['get', 'icon'],
-              'text-size': 22,
-              'text-allow-overlap': true,
-              'text-ignore-placement': true,
-            },
-          });
-        }
-      } catch (e) {
-        console.warn('[practice-logs] setup 실패:', e);
-        return;
-      }
+    const render = () => {
+      // 기존 마커 제거
+      practiceMarkersRef.current.forEach((m) => {
+        try { m.remove(); } catch {}
+      });
+      practiceMarkersRef.current = [];
 
-      const src = map.getSource('practice-logs');
-      if (!src) return;
-      const features = practiceLogs
+      // 새 마커 생성
+      practiceLogs
         .filter((log) => log?.location && typeof log.location.lng === 'number' && typeof log.location.lat === 'number')
-        .map((log) => ({
-          type: 'Feature',
-          properties: {
-            id: log.id,
-            icon: log.icon || '✨',
-            label: log.practiceLabel || '실천',
-            co2: log.co2Saved || 0,
-            locationName: log.location.name || '캠퍼스',
-          },
-          geometry: { type: 'Point', coordinates: [log.location.lng, log.location.lat] },
-        }));
-      src.setData({ type: 'FeatureCollection', features });
+        .forEach((log) => {
+          const el = document.createElement('div');
+          const isCounter = (Number(log.co2Saved) || 0) < 0;
+          el.className = 'practice-pin' + (isCounter ? ' practice-pin-counter' : '');
+          const signedCo2 = (Number(log.co2Saved) || 0).toFixed(2);
+          el.title = `${log.icon || '✨'} ${log.practiceLabel || '실천'} (${signedCo2 >= 0 ? '+' : ''}${signedCo2} kgCO₂eq${isCounter ? ' · ⚠️ 역효과' : ''})`;
+          el.innerHTML = `
+            <div class="practice-pin-hole">
+              ${log.photoPreview
+                ? `<img class="practice-pin-photo" src="${log.photoPreview}" alt="" />`
+                : `<span class="practice-pin-emoji">${log.icon || '✨'}</span>`}
+            </div>
+            ${isCounter ? '<div class="practice-pin-warning">⚠️</div>' : ''}
+          `;
+          el.addEventListener('click', (e) => {
+            e.stopPropagation();
+            onLogClickRef.current?.(log.id);
+          });
+          const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
+            .setLngLat([log.location.lng, log.location.lat])
+            .addTo(map);
+          practiceMarkersRef.current.push(marker);
+        });
     };
 
-    if (map.isStyleLoaded() && map.getStyle()?.layers) {
-      setupAndUpdate();
-    } else {
-      map.once('load', setupAndUpdate);
-    }
+    if (map.loaded()) render();
+    else map.once('load', render);
+
+    return () => {
+      practiceMarkersRef.current.forEach((m) => {
+        try { m.remove(); } catch {}
+      });
+      practiceMarkersRef.current = [];
+    };
   }, [practiceLogs]);
 
   // pickMode 위치 핀 동기화
@@ -1088,6 +1094,22 @@ export default function CampusMap({
     move();
     if (!map.loaded()) map.once('load', move);
   }, [cameraPreset]);
+
+  useEffect(() => {
+    if (!mapRef.current) return;
+    const map = mapRef.current;
+    const layerIds = ['campus-basemap-road-casing', 'campus-basemap-road-line'];
+    const update = () => {
+      const visibility = highlightMapRoads ? 'visible' : 'none';
+      for (const id of layerIds) {
+        if (map.getLayer(id)) {
+          map.setLayoutProperty(id, 'visibility', visibility);
+        }
+      }
+    };
+    if (map.isStyleLoaded()) update();
+    else map.once('load', update);
+  }, [highlightMapRoads]);
 
   // 커서 변경
   useEffect(() => {

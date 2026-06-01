@@ -10,6 +10,7 @@
 
 import { DEFAULT_BUDGET, ITEM_MAP } from './items.js';
 import { buildingRooftopAvailableArea, getBuildingZone, getBuildingRooftopFixtures, getRooftopReserveByZone } from './zones.js';
+import { BASE_YEAR, getEffectiveCost } from './costForecast.js';
 
 const MILLION_KRW = 1000000;
 
@@ -23,10 +24,26 @@ function itemUnitCoeff(item) {
   return Number(item.effectiveCoeff ?? meta?.coeff ?? 0);
 }
 
+function itemUnitEnergy(item) {
+  const meta = ITEM_MAP[item.type];
+  return Number(item.effectiveEnergyKwh ?? meta?.energyKwh ?? 0);
+}
+
 function sumItemField(items, field) {
   return items.reduce((sum, item) => {
     const meta = ITEM_MAP[item.type];
+    if (field === 'energyKwh') return sum + itemUnitEnergy(item) * itemQty(item);
     return sum + Number(meta?.[field] ?? 0) * itemQty(item);
+  }, 0);
+}
+
+function sumItemCost(items, year) {
+  return items.reduce((sum, item) => {
+    const meta = ITEM_MAP[item.type];
+    if (!meta) return sum;
+    const projectedCost = getEffectiveCost(item.type, year, meta.cost);
+    const unitCost = Number(item.effectiveUnitCost ?? Math.round(projectedCost * Number(item.costMultiplier || 1)));
+    return sum + unitCost * itemQty(item);
   }, 0);
 }
 
@@ -137,6 +154,49 @@ const POSITIVE_SYNERGY = [
     affectedItem: 'rainwater',
     reason: '🌿+💧 그린루프-빗물저류 연계: 관수 재활용 → 빗물 효과 +20%',
   },
+  // ── 추가 시너지 (v3, 공인 자료 인용) ──
+  {
+    items: ['bems', 'ev'],
+    condition: 'both_exist',
+    bonus: 0.08,
+    affectedItem: 'ev',
+    reason: '📊+🔌 BEMS-EV 스마트충전 연계: 피크 회피·시간대 분산 충전으로 EV 효과 +8% (IEA 「Smart Charging of EVs」 2023; 한전 분산자원 통합운영)',
+  },
+  {
+    items: ['bems', 'geothermal'],
+    condition: 'both_exist',
+    bonus: 0.10,
+    affectedItem: 'geothermal',
+    reason: '📊+🌡 BEMS-지열 HVAC 통합제어: 부하 예측·COP 최적화로 지열 효과 +10% (ASHRAE HVAC Control Handbook; 한국에너지공단 BEMS 보급가이드)',
+  },
+  {
+    items: ['led', 'solar_self'],
+    condition: 'both_exist',
+    bonus: 0.05,
+    affectedItem: 'led',
+    reason: '💡+☀️ LED-태양광 연계: 야간 부하 감소로 자가소비율 ↑, LED 절감 +5% (KEEI 「분산자원 보급에 따른 전력시스템 영향」)',
+  },
+  {
+    items: ['tree', 'rainwater'],
+    condition: 'nearby',
+    radius: 0.0008,            // ~80m
+    bonus: 0.05,
+    affectedItem: 'rainwater',
+    reason: '🌳+💧 수목-빗물저류 인접: 수목 흡수로 우수 유출 완화 → 저류조 부하↓ 효과 +5% (환경부 「도시 침수예방 가이드」)',
+  },
+  {
+    items: ['geothermal', 'solar_self'],
+    condition: 'same_zone',
+    bonus: 0.06,
+    affectedItem: 'geothermal',
+    reason: '🌡+☀️ 지열-태양광 같은 건물: 태양광 전력으로 히트펌프 구동 → COP 효과 +6% (IEA 「The Future of Heat Pumps」 2022)',
+  },
+];
+
+// ─── UI 노출용 통합 시너지 데이터 (penalties 계산 + 사용자 가이드) ───
+export const SYNERGY_RULES_FOR_UI = [
+  ...POSITIVE_SYNERGY.map((r) => ({ ...r, type: 'positive' })),
+  ...NEGATIVE_SYNERGY.map((r) => ({ ...r, type: 'negative' })),
 ];
 
 // ─── 4-B. 옥상 가용면적 ── 단위당 옥상 점유면적 (㎡) ───
@@ -149,13 +209,13 @@ const ROOFTOP_FOOTPRINT_PER_UNIT = {
 };
 
 // ─── 4-A. 녹지 훼손 트레이드오프 (kgCO₂/년 단위당 흡수량 손실) ───
-// 산정 근거: 국립산림과학원 「산림 탄소흡수계수」 22 kgCO₂/그루 × 단위당 점유면적 × 녹지 식재밀도(0.1~0.2 그루/㎡)
+// 산정 근거: 국립산림과학원 주요 수종 표준 탄소흡수량 보수값 10 kgCO₂/그루 × 단위당 점유면적 × 녹지 식재밀도(0.1~0.2 그루/㎡)
 // → 녹지 위 설치 시 그루터기·관목 훼손에 따른 흡수 손실. 효율 페널티(zones.js)와 별도로 절감량에서 직접 차감.
 const GREEN_DAMAGE_PER_UNIT = {
-  solar_self:  88,   // kW당 ~30㎡ 점유 × 0.13그루/㎡ × 22kg
+  solar_self:  40,   // kW당 ~30㎡ 점유 × 0.13그루/㎡ × 10kg
   solar_bipv:  0,    // 외벽형 — 녹지 영향 없음
-  ev:          66,   // 기당 ~15㎡ × 0.2그루/㎡ × 22kg
-  geothermal:  44,   // RT당 ~2㎡ 시추 + 작업공간 훼손
+  ev:          30,   // 기당 ~15㎡ × 0.2그루/㎡ × 10kg
+  geothermal:  20,   // RT당 ~2㎡ 시추 + 작업공간 훼손
   rainwater:   0,    // 빗물 저류는 녹지에 중립~긍정
   tree:        0,    // 수목 — 녹지에 추가 식재
   greenroof:   0,    // 옥상 전용
@@ -190,7 +250,8 @@ function dist(a, b) {
  * @param {Array} items — [{ id, type, lng, lat, qty, zoneName, ... }]
  * @returns {{ grossSaving, embodiedPenalty, diminishingPenalty, synergyPenalty, synergyBonus, netSaving, warnings[], details[] }}
  */
-export function calculateRealistic(items) {
+export function calculateRealistic(items, options = {}) {
+  const year = Number(options.year) || BASE_YEAR;
   const warnings = [];
   const details = [];
 
@@ -217,6 +278,29 @@ export function calculateRealistic(items) {
     grossSaving += baseCoeff;
     return { ...it, idx, qty, unitCoeff, baseCoeff, adjustedCoeff: baseCoeff };
   });
+
+  const modifierNotes = [];
+  for (const it of perItem) {
+    const modifiers = Array.isArray(it.placementModifiers) ? it.placementModifiers : [];
+    for (const modifier of modifiers) {
+      modifierNotes.push({
+        item: ITEM_MAP[it.type]?.label || it.type,
+        zoneName: it.zoneName || it.locationName || '일반 구역',
+        label: modifier.label,
+        effectMultiplier: Number(modifier.effectMultiplier || 1),
+        costMultiplier: Number(modifier.costMultiplier || 1),
+        reason: modifier.reason || '',
+      });
+    }
+  }
+  if (modifierNotes.length > 0) {
+    const text = modifierNotes.slice(0, 6).map((m) => {
+      const effect = m.effectMultiplier !== 1 ? `효율 ${Math.round(m.effectMultiplier * 100)}%` : '';
+      const cost = m.costMultiplier !== 1 ? `비용 ${Math.round(m.costMultiplier * 100)}%` : '';
+      return `${m.item}@${m.zoneName} ${m.label}(${[effect, cost].filter(Boolean).join(', ')})`;
+    }).join(', ');
+    details.push(`📍 위치·높이 보정: ${text}`);
+  }
 
   // ── 1. 설치 탄소 (Embodied Carbon) ──
   let embodiedPenalty = 0;
@@ -450,7 +534,7 @@ export function calculateRealistic(items) {
   // ── 최종 합산 ──
   const adjustedSaving = perItem.reduce((s, it) => s + it.adjustedCoeff, 0);
   const netSaving = Math.round(adjustedSaving - embodiedPenalty);
-  const totalCost = Math.round(sumItemField(items, 'cost'));
+  const totalCost = Math.round(sumItemCost(items, year));
   const energyKwh = Math.round(sumItemField(items, 'energyKwh'));
   const efficiencyScore = efficiencyPerMillion(netSaving, totalCost);
   const carbonScore = Math.max(0, netSaving);
@@ -476,10 +560,11 @@ export function calculateRealistic(items) {
   };
 }
 
-export function calculateDashboardMetrics(items = [], baselineItems = [], budget = DEFAULT_BUDGET) {
-  const user = calculateRealistic(items);
-  const baseline = calculateRealistic(baselineItems);
-  const total = calculateRealistic([...baselineItems, ...items]);
+export function calculateDashboardMetrics(items = [], baselineItems = [], budget = DEFAULT_BUDGET, year = BASE_YEAR) {
+  const opts = { year };
+  const user = calculateRealistic(items, opts);
+  const baseline = calculateRealistic(baselineItems, opts);
+  const total = calculateRealistic([...baselineItems, ...items], opts);
   const usedBudget = user.totalCost;
 
   return {
@@ -492,5 +577,6 @@ export function calculateDashboardMetrics(items = [], baselineItems = [], budget
     total,
     itemCount: items.length,
     baselineItemCount: baselineItems.length,
+    designYear: year,
   };
 }

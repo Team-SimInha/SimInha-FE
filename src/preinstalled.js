@@ -85,11 +85,11 @@ export const PREINSTALLED_ITEMS = [
   },
 ];
 
-export const PREINSTALLED_NOTE = '기존 설비 데이터는 공개 항공사진 + 캠퍼스 시설 안내 기반 추정치입니다. 인하대 시설팀 실데이터(설치 연도·용량) 확보 후 교체 예정 (확장 로드맵 참조).';
+export const PREINSTALLED_NOTE = '기존 설비 위치·용량은 MVP 추정치입니다. 감축계수는 공인 산식을 적용하며, 인하대 시설팀 실측자료 확보 후 설치 연도·용량을 교체 예정입니다.';
 
 // 기존 설비 데이터 출처 (UI/AI 프롬프트용)
 export const PREINSTALLED_SOURCE = {
-  estimated: '공개 항공사진(카카오맵·OSM) + 인하대 시설 안내 페이지 기반 추정. 실측 확보 시 교체 예정.',
+  estimated: 'MVP 위치 추정치. 공인/시설팀 실측 확보 시 교체 예정.',
   measured: '인하대 시설팀 제공 실측 데이터.',
 };
 
@@ -103,6 +103,7 @@ export const BUILDING_ROOFTOP_FIXTURES = [
   {
     buildingId: 'bldg_60th',
     name: '60주년기념관',
+    dataQuality: 'estimated',
     source: '카카오맵 항공사진 (2024) — 기존 태양광/옥상녹화 영역 외 잔여 점유 관찰',
     fixtures: [
       { type: 'ac_condenser', label: '냉방 실외기 어레이', areaM2: 35 },
@@ -113,6 +114,7 @@ export const BUILDING_ROOFTOP_FIXTURES = [
   {
     buildingId: 'bldg_hitech',
     name: '하이테크센터',
+    dataQuality: 'estimated',
     source: '카카오맵·네이버 항공사진 (2024) — 클린룸 공조 다수 관찰',
     fixtures: [
       { type: 'ac_condenser', label: '클린룸 공조 실외기', areaM2: 80 },
@@ -123,6 +125,7 @@ export const BUILDING_ROOFTOP_FIXTURES = [
   {
     buildingId: 'bldg_5',
     name: '5호관',
+    dataQuality: 'estimated',
     source: '카카오맵 항공사진 (2024) — ㄷ자형 대형 강의동, 옥상 산재 실외기',
     fixtures: [
       { type: 'ac_condenser', label: '냉방 실외기 (분산 배치)', areaM2: 100 },
@@ -133,6 +136,7 @@ export const BUILDING_ROOFTOP_FIXTURES = [
   {
     buildingId: 'bldg_lib',
     name: '정석학술정보관',
+    dataQuality: 'estimated',
     source: '카카오맵 항공사진 (2024) — 도서관 항온항습 공조 대형',
     fixtures: [
       { type: 'ac_condenser', label: '항온항습 공조 (도서관)', areaM2: 60 },
@@ -142,6 +146,7 @@ export const BUILDING_ROOFTOP_FIXTURES = [
   {
     buildingId: 'bldg_dorm',
     name: '비룡재 (기숙사)',
+    dataQuality: 'estimated',
     source: '카카오맵·네이버 항공사진 (2024) — 14층 고층 기숙사 옥상',
     fixtures: [
       { type: 'ac_condenser', label: '냉방 실외기 (호실별)', areaM2: 70 },
@@ -153,4 +158,4 @@ export const BUILDING_ROOFTOP_FIXTURES = [
 
 export const ROOFTOP_FIXTURES_NOTE =
   '본 데이터는 공개 항공사진(카카오맵·네이버 지도·구글 어스) 관찰 기반 추정치입니다. ' +
-  '실측 자료(인하대 시설팀 협조) 확보 시 교체 예정 — 확장 로드맵 참조.';
+  '공인/시설팀 실측 자료 확보 전에는 계산에서 제외되며, 실측 확보 시 교체 예정입니다.';
