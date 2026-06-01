@@ -752,7 +752,7 @@ export default function App() {
   const [sourcesOpen, setSourcesOpen] = useState(false);
   const [tourStep, setTourStep] = useState(0);
   const [cameraPreset, setCameraPreset] = useState('iso');
-  const [showCampusPaths, setShowCampusPaths] = useState(true);
+  const [highlightMapRoads, setHighlightMapRoads] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(() => {
     try {
       return localStorage.getItem(ONBOARDING_KEY) !== 'done';
@@ -995,7 +995,7 @@ export default function App() {
           items={items}
           preinstalledItems={PREINSTALLED_ITEMS}
           showPreinstalled={showPreinstalled}
-          showCampusPaths={showCampusPaths}
+          highlightMapRoads={highlightMapRoads}
           cameraPreset={cameraPreset}
           onPlace={handlePlace}
           onRemove={handleRemove}
@@ -1017,8 +1017,8 @@ export default function App() {
             <button className="secondary" onClick={() => setShowPreinstalled((v) => !v)}>
               {showPreinstalled ? '기존 설비 숨기기' : '기존 설비 보기'}
             </button>
-            <button className={`secondary ${showCampusPaths ? 'active-toggle' : ''}`} onClick={() => setShowCampusPaths((v) => !v)}>
-              {showCampusPaths ? '동선 숨기기' : '동선 표시'}
+            <button className={`secondary ${highlightMapRoads ? 'active-toggle' : ''}`} onClick={() => setHighlightMapRoads((v) => !v)}>
+              {highlightMapRoads ? '도로 강조 끄기' : '도로 강조'}
             </button>
             <button className="danger" onClick={handleReset} disabled={!items.length}>
               초기화

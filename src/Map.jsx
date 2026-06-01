@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { ITEM_MAP, buildItemPolygon, buildPolePolygon } from './items.js';
-import { CAMPUS_ZONES, DECORATIVE_TREES, WALKWAYS, CAMPUS_ROAD_CENTERLINES } from './zones.js';
+import { CAMPUS_ZONES, DECORATIVE_TREES } from './zones.js';
 import { CAMPUS_POLYS, INHA_BUILDINGS } from './inha_buildings.js';
 
 // 캠퍼스 건물의 OSM way ID — OSM 배경 레이어에서 이 ID들은 제외해서 z-fighting 방지
@@ -192,7 +192,7 @@ export default function CampusMap({
   items,
   preinstalledItems = [],
   showPreinstalled = true,
-  showCampusPaths = true,
+  highlightMapRoads = true,
   cameraPreset = 'iso',
   onPlace,
   onRemove,
@@ -492,69 +492,49 @@ export default function CampusMap({
         },
       });
 
-      // 산책로
-      map.addSource('walkways', {
-        type: 'geojson',
-        data: {
-          type: 'FeatureCollection',
-          features: WALKWAYS.map((w) => ({
-            type: 'Feature', properties: { id: w.id },
-            geometry: { type: 'LineString', coordinates: w.coordinates },
-          })),
-        },
-      });
-      map.addLayer({
-        id: 'walkways-line', type: 'line', source: 'walkways',
-        layout: {
-          'line-cap': 'round',
-          'line-join': 'round',
-          'visibility': showCampusPaths ? 'visible' : 'none',
-        },
-        paint: { 'line-color': '#d8c88f', 'line-width': 1.8, 'line-opacity': 0.42 },
-      });
-
-      // 주요 도로 중심선 — 도로 폴리곤과 함께 실제 동선감을 보강
-      map.addSource('campus-road-lines', {
-        type: 'geojson',
-        data: {
-          type: 'FeatureCollection',
-          features: CAMPUS_ROAD_CENTERLINES.map((r) => ({
-            type: 'Feature',
-            properties: { id: r.id, name: r.name },
-            geometry: { type: 'LineString', coordinates: r.coordinates },
-          })),
-        },
-      });
-      map.addLayer({
-        id: 'campus-road-line-casing',
-        type: 'line',
-        source: 'campus-road-lines',
-        layout: {
-          'line-cap': 'round',
-          'line-join': 'round',
-          'visibility': showCampusPaths ? 'visible' : 'none',
-        },
-        paint: {
-          'line-color': '#0d1117',
-          'line-width': 5,
-          'line-opacity': 0.28,
-        },
-      });
-      map.addLayer({
-        id: 'campus-road-line',
-        type: 'line',
-        source: 'campus-road-lines',
-        layout: {
-          'line-cap': 'round',
-          'line-join': 'round',
-          'visibility': showCampusPaths ? 'visible' : 'none',
-        },
-        paint: {
-          'line-color': '#b7c4d4',
-          'line-width': 2.4,
-          'line-opacity': 0.62,
-        },
-      });
+      // 기본 지도에 이미 있는 도로/보행로를 강조한다.
+      // 별도 수동 선을 그리지 않고 OpenFreeMap transportation 벡터를 재사용한다.
+      if (map.getSource('openmaptiles')) {
+        const campusRouteFilter = ['all',
+          ['match', ['geometry-type'], ['LineString', 'MultiLineString'], true, false],
+          ['match', ['get', 'class'], ['path', 'minor', 'service', 'track'], true, false],
+        ];
+        map.addLayer({
+          id: 'campus-basemap-road-casing',
+          type: 'line',
+          source: 'openmaptiles',
+          'source-layer': 'transportation',
+          filter: campusRouteFilter,
+          layout: {
+            'line-cap': 'round',
+            'line-join': 'round',
+            'visibility': highlightMapRoads ? 'visible' : 'none',
+          },
+          paint: {
+            'line-color': '#05070a',
+            'line-width': ['interpolate', ['linear'], ['zoom'], 15, 2.4, 17, 4.8, 20, 8.5],
+            'line-opacity': 0.5,
+            'line-blur': 0.4,
+          },
+        });
+        map.addLayer({
+          id: 'campus-basemap-road-line',
+          type: 'line',
+          source: 'openmaptiles',
+          'source-layer': 'transportation',
+          filter: campusRouteFilter,
+          layout: {
+            'line-cap': 'round',
+            'line-join': 'round',
+            'visibility': highlightMapRoads ? 'visible' : 'none',
+          },
+          paint: {
+            'line-color': '#4b5968',
+            'line-width': ['interpolate', ['linear'], ['zoom'], 15, 1.2, 17, 2.6, 20, 5.2],
+            'line-opacity': 0.92,
+          },
+        });
+      }
 
       // ── 인하대 정의 건물 (3D) ──
       map.addSource('campus-buildings', { type: 'geojson', data: buildingsGeoJSON() });
@@ -1118,9 +1098,9 @@ export default function CampusMap({
   useEffect(() => {
     if (!mapRef.current) return;
     const map = mapRef.current;
-    const layerIds = ['walkways-line', 'campus-road-line-casing', 'campus-road-line'];
+    const layerIds = ['campus-basemap-road-casing', 'campus-basemap-road-line'];
     const update = () => {
-      const visibility = showCampusPaths ? 'visible' : 'none';
+      const visibility = highlightMapRoads ? 'visible' : 'none';
       for (const id of layerIds) {
         if (map.getLayer(id)) {
           map.setLayoutProperty(id, 'visibility', visibility);
@@ -1129,7 +1109,7 @@ export default function CampusMap({
     };
     if (map.isStyleLoaded()) update();
     else map.once('load', update);
-  }, [showCampusPaths]);
+  }, [highlightMapRoads]);
 
   // 커서 변경
   useEffect(() => {
