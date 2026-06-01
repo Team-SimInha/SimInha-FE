@@ -912,26 +912,28 @@ export default function CampusMap({
         const props = bldHits[0].properties;
         const zone = CAMPUS_ZONES.find((z) => z.id === props.id);
         if (zone) {
-          // 폴리곤 중심
-          let cx = 0, cy = 0;
-          for (const [x, y] of zone.polygon) { cx += x; cy += y; }
-          cx /= zone.polygon.length; cy /= zone.polygon.length;
-          // 같은 건물 옥상에 이미 배치된 동일 타입 아이템 개수 (자가소비 태양광 패널 어레이 한 개 ≈ 16m×8m)
+          // 건물 bbox 계산 (외곽 범위)
+          let minLng = Infinity, maxLng = -Infinity, minLat = Infinity, maxLat = -Infinity;
+          for (const [x, y] of zone.polygon) {
+            if (x < minLng) minLng = x; if (x > maxLng) maxLng = x;
+            if (y < minLat) minLat = y; if (y > maxLat) maxLat = y;
+          }
+          const bldWidth = maxLng - minLng;
+          const bldHeight = maxLat - minLat;
+          // 같은 건물 옥상 기존 배치 개수
           const existingOnBuilding = (itemsRef.current || []).filter(
             (it) => it.zoneId === zone.id && ITEM_MAP[it.type]?.model3d?.onRoof
           ).length;
-          // 3×3 격자 (col*row=9칸) 으로 분산 — 패널 폭 만큼 띄움
-          const gridSize = 3;
-          const slot = existingOnBuilding % (gridSize * gridSize);
-          const col = slot % gridSize;
-          const row = Math.floor(slot / gridSize);
-          const colSpacing = 0.00022; // ~19m E-W
-          const rowSpacing = 0.00014; // ~15m N-S
-          const dx = (col - (gridSize - 1) / 2) * colSpacing;
-          const dy = (row - (gridSize - 1) / 2) * rowSpacing;
-          const latRatio = 1 / Math.cos((cy * Math.PI) / 180);
-          lng = cx + dx * latRatio;
-          lat = cy + dy;
+          // 건물 bbox 안에서 3×3 격자, 가장자리 20% inset 두고 분산
+          const gridCols = 3, gridRows = 3;
+          const inset = 0.2;
+          const slot = existingOnBuilding % (gridCols * gridRows);
+          const col = slot % gridCols;
+          const row = Math.floor(slot / gridCols);
+          const colFrac = inset + (col / Math.max(1, gridCols - 1)) * (1 - 2 * inset);
+          const rowFrac = inset + (row / Math.max(1, gridRows - 1)) * (1 - 2 * inset);
+          lng = minLng + bldWidth * colFrac;
+          lat = minLat + bldHeight * rowFrac;
         }
       }
       onPlaceRef.current({ type, lng, lat });
