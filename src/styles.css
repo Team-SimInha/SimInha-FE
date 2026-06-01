@@ -452,7 +452,7 @@ body { background: #0e1116; color: #e6edf3; }
   width: 52px;
   height: 52px;
   border-radius: 50% 50% 50% 0;
-  transform: rotate(-45deg);
+  transform: rotate(-75deg);
   background: linear-gradient(135deg, #1a9442 0%, #2ea043 45%, #56d364 100%);
   box-shadow:
     0 4px 12px rgba(0, 0, 0, 0.4),
@@ -463,7 +463,7 @@ body { background: #0e1116; color: #e6edf3; }
 }
 .practice-pin:hover {
   filter: brightness(1.1);
-  transform: rotate(-45deg) scale(1.08);
+  transform: rotate(-75deg) scale(1.08);
   z-index: 10;
 }
 .practice-pin-hole {
@@ -478,7 +478,7 @@ body { background: #0e1116; color: #e6edf3; }
   display: flex;
   align-items: center;
   justify-content: center;
-  transform: rotate(45deg); /* 핀 -45° 회전 상쇄 */
+  transform: rotate(75deg); /* 핀 -75° 회전 상쇄 (사진 정방향 유지) */
   box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 .practice-pin-photo {
@@ -511,7 +511,7 @@ body { background: #0e1116; color: #e6edf3; }
   display: flex; align-items: center; justify-content: center;
   font-size: 14px;
   border: 2px solid #fff;
-  transform: rotate(45deg); /* 핀 회전 상쇄 */
+  transform: rotate(75deg); /* 핀 회전 상쇄 */
   box-shadow: 0 2px 4px rgba(0,0,0,0.3);
 }
 
