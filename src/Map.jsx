@@ -210,6 +210,7 @@ export default function CampusMap({
   const pickModeRef = useRef(pickMode);
   const onPickRef = useRef(onPick);
   const onLogClickRef = useRef(onLogClick);
+  const itemsRef = useRef(items);
 
   useEffect(() => { selectedRef.current = selectedType; }, [selectedType]);
   useEffect(() => { onRemoveRef.current = onRemove; }, [onRemove]);
@@ -217,6 +218,7 @@ export default function CampusMap({
   useEffect(() => { pickModeRef.current = pickMode; }, [pickMode]);
   useEffect(() => { onPickRef.current = onPick; }, [onPick]);
   useEffect(() => { onLogClickRef.current = onLogClick; }, [onLogClick]);
+  useEffect(() => { itemsRef.current = items; }, [items]);
 
   useEffect(() => {
     const map = new maplibregl.Map({
@@ -946,16 +948,28 @@ export default function CampusMap({
         const props = bldHits[0].properties;
         const zone = CAMPUS_ZONES.find((z) => z.id === props.id);
         if (zone) {
-          // 폴리곤 중심을 사용 (안전한 옥상 위치)
-          let cx = 0, cy = 0;
-          for (const [x, y] of zone.polygon) { cx += x; cy += y; }
-          cx /= zone.polygon.length; cy /= zone.polygon.length;
-          // 같은 건물에 여러 개 배치 시 겹치지 않게 약간씩 분산
-          const offset = 0.000015;
-          const angle = Math.random() * Math.PI * 2;
-          const dist = Math.random() * offset;
-          lng = cx + Math.cos(angle) * dist / Math.cos((cy * Math.PI) / 180);
-          lat = cy + Math.sin(angle) * dist;
+          // 건물 bbox 계산 (외곽 범위)
+          let minLng = Infinity, maxLng = -Infinity, minLat = Infinity, maxLat = -Infinity;
+          for (const [x, y] of zone.polygon) {
+            if (x < minLng) minLng = x; if (x > maxLng) maxLng = x;
+            if (y < minLat) minLat = y; if (y > maxLat) maxLat = y;
+          }
+          const bldWidth = maxLng - minLng;
+          const bldHeight = maxLat - minLat;
+          // 같은 건물 옥상 기존 배치 개수
+          const existingOnBuilding = (itemsRef.current || []).filter(
+            (it) => it.zoneId === zone.id && ITEM_MAP[it.type]?.model3d?.onRoof
+          ).length;
+          // 건물 bbox 안에서 3×3 격자, 가장자리 20% inset 두고 분산
+          const gridCols = 3, gridRows = 3;
+          const inset = 0.2;
+          const slot = existingOnBuilding % (gridCols * gridRows);
+          const col = slot % gridCols;
+          const row = Math.floor(slot / gridCols);
+          const colFrac = inset + (col / Math.max(1, gridCols - 1)) * (1 - 2 * inset);
+          const rowFrac = inset + (row / Math.max(1, gridRows - 1)) * (1 - 2 * inset);
+          lng = minLng + bldWidth * colFrac;
+          lat = minLat + bldHeight * rowFrac;
         }
       }
       onPlaceRef.current({ type, lng, lat });
