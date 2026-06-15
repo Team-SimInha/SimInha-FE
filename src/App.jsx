@@ -2,12 +2,21 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Palette from './Palette.jsx';
 import CampusMap from './Map.jsx';
 import PersonalTrack from './PersonalTrack.jsx';
+import Leaderboard from './Leaderboard.jsx';
 import { DEFAULT_BUDGET, ITEM_MAP, REFERENCE_SOURCES, COST_TRANSPARENCY_NOTE } from './items.js';
 import { checkPlacement } from './zones.js';
 import { calculateDashboardMetrics, SYNERGY_RULES_FOR_UI } from './penalties.js';
 import { BASE_YEAR, getEffectiveCost } from './costForecast.js';
 import { PREINSTALLED_ITEMS, PREINSTALLED_NOTE } from './preinstalled.js';
-import { deleteScenario, loadScenarios, renameScenario, saveScenario } from './storage.js';
+import {
+  deleteScenarioOnline,
+  loadPresetPlacementsOnline,
+  loadScenarios,
+  loadScenariosOnline,
+  renameScenarioOnline,
+  saveLeaderboardEntryOnline,
+  saveScenarioOnline,
+} from './storage.js';
 import { buildReportMarkdown, requestScenarioReport } from './reportApi.js';
 
 const ONBOARDING_KEY = 'inha-carbon-sim.onboarding.v1';
@@ -744,8 +753,11 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [showDetail, setShowDetail] = useState(false);
   const [showPreinstalled, setShowPreinstalled] = useState(true);
+  const [preinstalledItems, setPreinstalledItems] = useState(PREINSTALLED_ITEMS);
   const [scenarios, setScenarios] = useState(() => loadScenarios());
   const [activeScenarioId, setActiveScenarioId] = useState(null);
+  const [leaderboardRefresh, setLeaderboardRefresh] = useState(0);
+  const [leaderboardSubmitting, setLeaderboardSubmitting] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [reportLoading, setReportLoading] = useState(false);
   const [report, setReport] = useState(null);
@@ -762,8 +774,8 @@ export default function App() {
   });
 
   const metrics = useMemo(
-    () => calculateDashboardMetrics(items, PREINSTALLED_ITEMS, DEFAULT_BUDGET, designYear),
-    [items, designYear]
+    () => calculateDashboardMetrics(items, preinstalledItems, DEFAULT_BUDGET, designYear),
+    [items, designYear, preinstalledItems]
   );
 
   const effectiveCostOf = useCallback(
@@ -863,15 +875,32 @@ export default function App() {
     setActiveScenarioId(null);
   };
 
-  const refreshScenarios = () => setScenarios(loadScenarios());
+  const refreshScenarios = useCallback(async () => {
+    const nextScenarios = await loadScenariosOnline();
+    setScenarios(nextScenarios);
+    return nextScenarios;
+  }, []);
 
-  const handleSaveScenario = () => {
+  useEffect(() => {
+    let alive = true;
+    refreshScenarios();
+    loadPresetPlacementsOnline().then((presets) => {
+      if (alive && Array.isArray(presets) && presets.length > 0) {
+        setPreinstalledItems(presets);
+      }
+    });
+    return () => {
+      alive = false;
+    };
+  }, [refreshScenarios]);
+
+  const handleSaveScenario = async () => {
     const defaultName = nickname.trim()
       ? `${nickname} ${scenarios.length + 1}차안`
       : `${scenarios.length + 1}차 안`;
     const name = prompt('시나리오 이름을 입력하세요 (예: 1차 안, 2차 안)', defaultName);
     if (name === null) return;
-    const saved = saveScenario({
+    const saved = await saveScenarioOnline({
       name,
       nickname,
       items,
@@ -879,7 +908,7 @@ export default function App() {
       metrics: metricSnapshot(metrics),
     });
     setActiveScenarioId(saved.id);
-    refreshScenarios();
+    await refreshScenarios();
     showToast(`시나리오 저장 (${designYear}년 단가 기준)`);
   };
 
@@ -892,18 +921,37 @@ export default function App() {
     showToast(`${scenario.name} 불러오기 완료${scenario.year ? ` (${scenario.year}년 단가)` : ''}`);
   };
 
-  const handleRenameScenario = (scenario) => {
+  const handleRenameScenario = async (scenario) => {
     const name = prompt('새 이름을 입력하세요', scenario.name);
     if (name === null) return;
-    renameScenario(scenario.id, name);
-    refreshScenarios();
+    await renameScenarioOnline(scenario.id, name, scenario);
+    await refreshScenarios();
   };
 
-  const handleDeleteScenario = (scenario) => {
+  const handleDeleteScenario = async (scenario) => {
     if (!confirm(`${scenario.name} 시나리오를 삭제할까요?`)) return;
-    deleteScenario(scenario.id);
-    if (activeScenarioId === scenario.id) setActiveScenarioId(null);
-    refreshScenarios();
+    await deleteScenarioOnline(scenario.id);
+    if (String(activeScenarioId) === String(scenario.id)) setActiveScenarioId(null);
+    await refreshScenarios();
+  };
+
+  const handleLeaderboardSubmit = async () => {
+    if (!items.length) {
+      showToast('리더보드에 등록할 신규 배치가 없습니다', 'error');
+      return;
+    }
+    setLeaderboardSubmitting(true);
+    try {
+      await saveLeaderboardEntryOnline({
+        nickname,
+        items,
+        metrics: metricSnapshot(metrics),
+      });
+      setLeaderboardRefresh((key) => key + 1);
+      showToast(`🏆 ${(nickname.trim() || '익명')} 리더보드 등록 완료`);
+    } finally {
+      setLeaderboardSubmitting(false);
+    }
   };
 
   const handleReport = async () => {
@@ -993,7 +1041,7 @@ export default function App() {
         <CampusMap
           selectedType={selectedType}
           items={items}
-          preinstalledItems={PREINSTALLED_ITEMS}
+          preinstalledItems={preinstalledItems}
           showPreinstalled={showPreinstalled}
           highlightMapRoads={highlightMapRoads}
           cameraPreset={cameraPreset}
@@ -1065,6 +1113,12 @@ export default function App() {
           onLoad={handleLoadScenario}
           onRename={handleRenameScenario}
           onDelete={handleDeleteScenario}
+        />
+        <Leaderboard
+          refreshKey={leaderboardRefresh}
+          onSubmit={handleLeaderboardSubmit}
+          submitDisabled={!items.length || leaderboardSubmitting}
+          submitting={leaderboardSubmitting}
         />
       </aside>
 
