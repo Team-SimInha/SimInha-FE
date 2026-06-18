@@ -3,9 +3,11 @@
 // 업로드된 인증 사진(base64 data URL)을 받아, 후보 활동 목록 중 하나의 id로 분류한다.
 // PersonalTrack 의 키워드 매칭 결과와 교차 검증하기 위해 동일한 practice id 로만 답하도록 강제.
 //
-// ※ OpenAI Chat Completions API(이미지 입력 지원 모델)를 사용한다. 실패 시 이 함수는
-//   비-200 을 반환하고, 프론트(visionApi.js)는 설명(키워드) 기반 단독 분류로 폴백한다.
+// ※ OpenAI 호환 Chat Completions API(이미지 입력 지원 모델)를 사용한다. base URL 은
+//   OPENAI_BASE_URL 로 교체 가능(runyourai 등 OpenAI 호환 게이트웨이 지원). 실패 시 이
+//   함수는 비-200 을 반환하고, 프론트(visionApi.js)는 설명(키워드) 단독 분류로 폴백한다.
 const DEFAULT_MODEL = "gpt-4o-mini";
+const DEFAULT_BASE_URL = "https://api.openai.com/v1";
 
 function sendJson(res, status, payload) {
   res.statusCode = status;
@@ -81,7 +83,11 @@ export default async function handler(req, res) {
     }
 
     const model = process.env.OPENAI_VISION_MODEL || DEFAULT_MODEL;
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    const baseUrl = (process.env.OPENAI_BASE_URL || DEFAULT_BASE_URL).replace(
+      /\/+$/,
+      "",
+    );
+    const response = await fetch(`${baseUrl}/chat/completions`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
