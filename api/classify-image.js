@@ -3,10 +3,9 @@
 // 업로드된 인증 사진(base64 data URL)을 받아, 후보 활동 목록 중 하나의 id로 분류한다.
 // PersonalTrack 의 키워드 매칭 결과와 교차 검증하기 위해 동일한 practice id 로만 답하도록 강제.
 //
-// ※ Upstage Chat Completions API(OpenAI 호환)를 사용한다. 사용하는 모델이 이미지 입력
-//   (image_url 멀티모달)을 지원해야 한다. 미지원/실패 시 이 함수는 비-200 을 반환하고,
-//   프론트(visionApi.js)는 설명(키워드) 기반 단독 분류로 폴백한다.
-const DEFAULT_MODEL = "solar-pro3";
+// ※ OpenAI Chat Completions API(이미지 입력 지원 모델)를 사용한다. 실패 시 이 함수는
+//   비-200 을 반환하고, 프론트(visionApi.js)는 설명(키워드) 기반 단독 분류로 폴백한다.
+const DEFAULT_MODEL = "gpt-4o-mini";
 
 function sendJson(res, status, payload) {
   res.statusCode = status;
@@ -61,9 +60,9 @@ export default async function handler(req, res) {
     return;
   }
 
-  const apiKey = process.env.UPSTAGE_API_KEY;
+  const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
-    sendJson(res, 500, { error: "UPSTAGE_API_KEY is not configured" });
+    sendJson(res, 500, { error: "OPENAI_API_KEY is not configured" });
     return;
   }
 
@@ -81,11 +80,8 @@ export default async function handler(req, res) {
       return;
     }
 
-    const model =
-      process.env.UPSTAGE_VISION_MODEL ||
-      process.env.UPSTAGE_MODEL ||
-      DEFAULT_MODEL;
-    const response = await fetch("https://api.upstage.ai/v1/chat/completions", {
+    const model = process.env.OPENAI_VISION_MODEL || DEFAULT_MODEL;
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -103,11 +99,16 @@ export default async function handler(req, res) {
             role: "user",
             content: [
               { type: "text", text: promptFor(candidates) },
-              { type: "image_url", image_url: { url: imageDataUrl } },
+              // base64 data URL 을 그대로 전달 (OpenAI 가 지원). detail:'low' 로 비용 절감.
+              {
+                type: "image_url",
+                image_url: { url: imageDataUrl, detail: "low" },
+              },
             ],
           },
         ],
         temperature: 0,
+        response_format: { type: "json_object" },
         stream: false,
       }),
     });
@@ -115,7 +116,7 @@ export default async function handler(req, res) {
     const data = await response.json();
     if (!response.ok) {
       sendJson(res, response.status, {
-        error: "Upstage vision request failed",
+        error: "OpenAI vision request failed",
         detail:
           data?.error?.message || data?.message || "Unknown upstream error",
       });
