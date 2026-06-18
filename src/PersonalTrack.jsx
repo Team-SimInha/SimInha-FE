@@ -1,30 +1,48 @@
-import { useEffect, useMemo, useState } from 'react';
-import CampusMap from './Map.jsx';
-import { PRACTICES, PRACTICE_CATEGORIES, PRACTICE_MAP } from './practices.js';
-import { classifyPractice } from './practiceClassifier.js';
-import { deletePracticeLog, loadPersonalLeaderboard, loadPracticeLogs, savePersonalLeaderboardEntry, savePracticeLog } from './storage.js';
+import { useEffect, useMemo, useState } from "react";
+import CampusMap from "./Map.jsx";
+import { PRACTICES, PRACTICE_CATEGORIES, PRACTICE_MAP } from "./practices.js";
+import { classifyPractice } from "./practiceClassifier.js";
+import { classifyPracticeImage } from "./visionApi.js";
+import { verifyPractice, VERIFY_STATUS } from "./practiceVerify.js";
+import {
+  deletePracticeLog,
+  loadPersonalLeaderboard,
+  loadPracticeLogs,
+  savePersonalLeaderboardEntry,
+  savePracticeLog,
+} from "./storage.js";
 
 function PersonalLeaderboardPanel({ refreshKey }) {
   const [entries, setEntries] = useState([]);
-  useEffect(() => { setEntries(loadPersonalLeaderboard()); }, [refreshKey]);
-  const rankClass = (r) => (r === 1 ? 'gold' : r === 2 ? 'silver' : r === 3 ? 'bronze' : '');
+  useEffect(() => {
+    setEntries(loadPersonalLeaderboard());
+  }, [refreshKey]);
+  const rankClass = (r) =>
+    r === 1 ? "gold" : r === 2 ? "silver" : r === 3 ? "bronze" : "";
   return (
-    <section className="scenario-panel" style={{ borderBottom: 'none' }}>
+    <section className="scenario-panel" style={{ borderBottom: "none" }}>
       <div className="panel-title-row">
-        <h2 style={{ color: '#ffd33d' }}>🏆 개인 실천 리더보드</h2>
+        <h2 style={{ color: "#ffd33d" }}>🏆 개인 실천 리더보드</h2>
       </div>
-      {entries.length === 0 && <div className="empty compact">아직 등록된 실천 기록이 없습니다</div>}
+      {entries.length === 0 && (
+        <div className="empty compact">아직 등록된 실천 기록이 없습니다</div>
+      )}
       {entries.map((e) => (
         <div key={e.id} className="entry">
-          <div className={'rank ' + rankClass(e.rank)}>#{e.rank}</div>
+          <div className={"rank " + rankClass(e.rank)}>#{e.rank}</div>
           <div>
             <div className="nick">{e.nickname}</div>
             <div className="meta">
               {e.practice_count}건 인증 · {e.created_at.slice(0, 10)}
-              {e.categories?.length ? ` · ${e.categories.slice(0, 3).join('/')}` : ''}
+              {e.categories?.length
+                ? ` · ${e.categories.slice(0, 3).join("/")}`
+                : ""}
             </div>
           </div>
-          <div className="score">{e.total_saved_kg.toFixed(2)}<span style={{ fontSize: 10, color: '#8b949e' }}>kg</span></div>
+          <div className="score">
+            {e.total_saved_kg.toFixed(2)}
+            <span style={{ fontSize: 10, color: "#8b949e" }}>kg</span>
+          </div>
         </div>
       ))}
     </section>
@@ -33,9 +51,12 @@ function PersonalLeaderboardPanel({ refreshKey }) {
 
 function formatDateTime(iso) {
   try {
-    return new Date(iso).toLocaleString('ko-KR', {
-      year: 'numeric', month: 'short', day: 'numeric',
-      hour: '2-digit', minute: '2-digit',
+    return new Date(iso).toLocaleString("ko-KR", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
     });
   } catch {
     return iso;
@@ -46,27 +67,54 @@ function LogDetailModal({ log, onClose, onDelete }) {
   if (!log) return null;
   return (
     <div className="modal-backdrop" role="presentation" onClick={onClose}>
-      <div className="practice-log-modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="practice-log-modal"
+        role="dialog"
+        aria-modal="true"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="modal-header">
           <div>
             <div className="modal-kicker">실천 인증</div>
-            <h2>{log.icon} {log.practiceLabel}</h2>
+            <h2>
+              {log.icon} {log.practiceLabel}
+            </h2>
           </div>
-          <button className="secondary icon-button" onClick={onClose} aria-label="닫기">×</button>
+          <button
+            className="secondary icon-button"
+            onClick={onClose}
+            aria-label="닫기"
+          >
+            ×
+          </button>
         </div>
         {log.photoPreview && (
-          <img src={log.photoPreview} alt="인증 사진" className="log-modal-photo" />
+          <img
+            src={log.photoPreview}
+            alt="인증 사진"
+            className="log-modal-photo"
+          />
         )}
         <div className="log-modal-meta">
           <div className="log-modal-row">
-            <span className="log-modal-label">{(Number(log.co2Saved) || 0) < 0 ? '⚠️ 순배출 (역효과)' : '감축량'}</span>
-            <strong className="log-modal-co2" style={(Number(log.co2Saved) || 0) < 0 ? { color: '#ff7b72' } : {}}>
-              {((Number(log.co2Saved) || 0) >= 0 ? '+' : '') + log.co2Saved} kgCO₂eq
+            <span className="log-modal-label">
+              {(Number(log.co2Saved) || 0) < 0
+                ? "⚠️ 순배출 (역효과)"
+                : "감축량"}
+            </span>
+            <strong
+              className="log-modal-co2"
+              style={
+                (Number(log.co2Saved) || 0) < 0 ? { color: "#ff7b72" } : {}
+              }
+            >
+              {((Number(log.co2Saved) || 0) >= 0 ? "+" : "") + log.co2Saved}{" "}
+              kgCO₂eq
             </strong>
           </div>
           <div className="log-modal-row">
             <span className="log-modal-label">📍 장소</span>
-            <span>{log.location?.name || '캠퍼스'}</span>
+            <span>{log.location?.name || "캠퍼스"}</span>
           </div>
           <div className="log-modal-row">
             <span className="log-modal-label">📅 기록 시각</span>
@@ -85,7 +133,11 @@ function LogDetailModal({ log, onClose, onDelete }) {
             <p>{log.note}</p>
           </div>
         )}
-        <button className="danger" style={{ width: '100%', marginTop: 14 }} onClick={() => onDelete(log.id)}>
+        <button
+          className="danger"
+          style={{ width: "100%", marginTop: 14 }}
+          onClick={() => onDelete(log.id)}
+        >
           🗑 이 기록 삭제
         </button>
       </div>
@@ -101,38 +153,86 @@ function AnalysisModal({ result, description, onClose, onConfirm }) {
 
   return (
     <div className="modal-backdrop" role="presentation" onClick={onClose}>
-      <div className="practice-log-modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="practice-log-modal"
+        role="dialog"
+        aria-modal="true"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="modal-header">
           <div>
             <div className="modal-kicker">AI 분석 결과</div>
             <h2>🤖 어떤 실천일까요?</h2>
           </div>
-          <button className="secondary icon-button" onClick={onClose} aria-label="닫기">×</button>
+          <button
+            className="secondary icon-button"
+            onClick={onClose}
+            aria-label="닫기"
+          >
+            ×
+          </button>
         </div>
 
         {!manualMode && detected ? (
           <>
-            <div className={'ai-detected-card' + (detected.counterproductive ? ' ai-detected-counter' : '')}>
+            <div
+              className={
+                "ai-detected-card" +
+                (detected.counterproductive ? " ai-detected-counter" : "")
+              }
+            >
               <div className="ai-detected-icon">{detected.icon}</div>
               <div className="ai-detected-body">
                 <strong>
                   {detected.label}
-                  {detected.counterproductive && <span className="counter-warning-badge">⚠️ 역효과</span>}
+                  {detected.counterproductive && (
+                    <span className="counter-warning-badge">⚠️ 역효과</span>
+                  )}
                 </strong>
-                <span className="ai-detected-co2" style={detected.counterproductive ? { color: '#ff7b72' } : {}}>
-                  {(detected.co2PerUnit >= 0 ? '+' : '') + detected.co2PerUnit} kgCO₂eq / {detected.unit}
+                <span
+                  className="ai-detected-co2"
+                  style={detected.counterproductive ? { color: "#ff7b72" } : {}}
+                >
+                  {(detected.co2PerUnit >= 0 ? "+" : "") + detected.co2PerUnit}{" "}
+                  kgCO₂eq / {detected.unit}
                 </span>
                 <span className="ai-detected-source">
                   근거: "{result.matchedKeyword}" 키워드 감지
                 </span>
+                {result?.verification?.status === VERIFY_STATUS.ACCEPTED && (
+                  <span
+                    className="ai-detected-source"
+                    style={{ color: "#3fb950" }}
+                  >
+                    ✓ 이미지·설명 교차 검증 일치
+                  </span>
+                )}
+                {result?.verification?.status ===
+                  VERIFY_STATUS.FALLBACK_TEXT && (
+                  <span
+                    className="ai-detected-source"
+                    style={{ color: "#8b949e" }}
+                  >
+                    ⓘ 이미지 분석 미사용 — 설명 기반 분류
+                  </span>
+                )}
                 {detected.counterproductive && detected.alternativeNote && (
-                  <span style={{ color: '#ff7b72', fontSize: 12, marginTop: 6 }}>
+                  <span
+                    style={{ color: "#ff7b72", fontSize: 12, marginTop: 6 }}
+                  >
                     💡 {detected.alternativeNote}
                   </span>
                 )}
               </div>
             </div>
-            <p className="ai-hint" style={detected.counterproductive ? { borderLeftColor: '#f85149', color: '#ff7b72' } : {}}>
+            <p
+              className="ai-hint"
+              style={
+                detected.counterproductive
+                  ? { borderLeftColor: "#f85149", color: "#ff7b72" }
+                  : {}
+              }
+            >
               {detected.counterproductive
                 ? `⚠️ "${description}" 는 친환경 의도지만 실제 LCA 분석 시 배출 증가로 분류돼요. 그래도 솔직히 기록할까요?`
                 : `"${description}" 라고 적으셔서, 위 활동으로 인식했어요. 맞나요?`}
@@ -140,7 +240,12 @@ function AnalysisModal({ result, description, onClose, onConfirm }) {
             <div className="ai-actions">
               <button
                 onClick={() => {
-                  console.log('[AI confirm] clicked, detected:', detected, 'result:', result);
+                  console.log(
+                    "[AI confirm] clicked, detected:",
+                    detected,
+                    "result:",
+                    result,
+                  );
                   onConfirm(detected.id, result.matchedKeyword);
                 }}
               >
@@ -155,17 +260,22 @@ function AnalysisModal({ result, description, onClose, onConfirm }) {
           <>
             <p className="ai-hint">
               {result?.id
-                ? '직접 활동을 골라주세요.'
-                : '설명에서 정확히 어떤 활동인지 인식하지 못했어요. 아래에서 골라주세요.'}
+                ? "직접 활동을 골라주세요."
+                : "설명에서 정확히 어떤 활동인지 인식하지 못했어요. 아래에서 골라주세요."}
             </p>
             <div className="manual-pick-list">
               {PRACTICE_CATEGORIES.map((cat) => (
                 <div key={cat.id} className="manual-pick-group">
-                  <div className="manual-pick-group-title">{cat.icon} {cat.label}</div>
+                  <div className="manual-pick-group-title">
+                    {cat.icon} {cat.label}
+                  </div>
                   {PRACTICES.filter((p) => p.category === cat.id).map((p) => (
                     <label
                       key={p.id}
-                      className={'manual-pick-item' + (pickedId === p.id ? ' active' : '')}
+                      className={
+                        "manual-pick-item" +
+                        (pickedId === p.id ? " active" : "")
+                      }
                     >
                       <input
                         type="radio"
@@ -175,18 +285,29 @@ function AnalysisModal({ result, description, onClose, onConfirm }) {
                       />
                       <span className="manual-pick-icon">{p.icon}</span>
                       <span className="manual-pick-label">{p.label}</span>
-                      <span className="manual-pick-co2">+{p.co2PerUnit} kgCO₂eq</span>
+                      <span className="manual-pick-co2">
+                        +{p.co2PerUnit} kgCO₂eq
+                      </span>
                     </label>
                   ))}
                 </div>
               ))}
             </div>
             <div className="ai-actions">
-              <button onClick={() => pickedId && onConfirm(pickedId, null)} disabled={!pickedId}>
+              <button
+                onClick={() => pickedId && onConfirm(pickedId, null)}
+                disabled={!pickedId}
+              >
                 ✓ 이걸로 저장
               </button>
               {detected && (
-                <button className="secondary" onClick={() => { setManualMode(false); setPickedId(result.id); }}>
+                <button
+                  className="secondary"
+                  onClick={() => {
+                    setManualMode(false);
+                    setPickedId(result.id);
+                  }}
+                >
                   ← AI 추천으로
                 </button>
               )}
@@ -200,20 +321,21 @@ function AnalysisModal({ result, description, onClose, onConfirm }) {
 
 export default function PersonalTrack() {
   const [photoPreview, setPhotoPreview] = useState(null);
-  const [photoName, setPhotoName] = useState('');
+  const [photoName, setPhotoName] = useState("");
   const [location, setLocation] = useState(null);
-  const [description, setDescription] = useState('');
+  const [description, setDescription] = useState("");
   const [toast, setToast] = useState(null);
   const [logs, setLogs] = useState(() => loadPracticeLogs());
   const [selectedLog, setSelectedLog] = useState(null);
   const [analysisResult, setAnalysisResult] = useState(null);
-  const [cameraPreset, setCameraPreset] = useState('iso');
-  const [nickname, setNickname] = useState('');
+  const [analyzing, setAnalyzing] = useState(false);
+  const [cameraPreset, setCameraPreset] = useState("iso");
+  const [nickname, setNickname] = useState("");
   const [leaderboardRefresh, setLeaderboardRefresh] = useState(0);
 
-  const showToast = (msg, type = 'success') => {
+  const showToast = (msg, type = "success") => {
     setToast({ msg, type });
-    setTimeout(() => setToast(null), type === 'error' ? 4000 : 2500);
+    setTimeout(() => setToast(null), type === "error" ? 4000 : 2500);
   };
 
   const refreshLogs = () => setLogs(loadPracticeLogs());
@@ -222,7 +344,7 @@ export default function PersonalTrack() {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) {
-      showToast('사진은 5MB 이하만 업로드 가능합니다', 'error');
+      showToast("사진은 5MB 이하만 업로드 가능합니다", "error");
       return;
     }
     const reader = new FileReader();
@@ -234,8 +356,8 @@ export default function PersonalTrack() {
   };
 
   const handlePick = (lng, lat, locationName) => {
-    setLocation({ lng, lat, name: locationName || '캠퍼스 일반 구역' });
-    showToast(`📍 ${locationName || '위치'} 선택됨`);
+    setLocation({ lng, lat, name: locationName || "캠퍼스 일반 구역" });
+    showToast(`📍 ${locationName || "위치"} 선택됨`);
   };
 
   const handleLogClick = (id) => {
@@ -244,27 +366,78 @@ export default function PersonalTrack() {
   };
 
   const handleDeleteLog = (id) => {
-    if (!confirm('이 기록을 삭제할까요?')) return;
+    if (!confirm("이 기록을 삭제할까요?")) return;
     deletePracticeLog(id);
     refreshLogs();
     setSelectedLog(null);
-    showToast('기록이 삭제되었습니다');
+    showToast("기록이 삭제되었습니다");
   };
 
-  const handleAnalyze = () => {
-    if (!location) return showToast('지도에서 장소를 먼저 선택해주세요', 'error');
-    if (!photoPreview) return showToast('인증 사진을 업로드해주세요', 'error');
-    if (!description.trim()) return showToast('짧은 설명을 적어주세요', 'error');
+  const handleAnalyze = async () => {
+    if (!location)
+      return showToast("지도에서 장소를 먼저 선택해주세요", "error");
+    if (!photoPreview) return showToast("인증 사진을 업로드해주세요", "error");
+    if (!description.trim())
+      return showToast("짧은 설명을 적어주세요", "error");
 
-    const result = classifyPractice(description);
-    setAnalysisResult(result);
+    setAnalyzing(true);
+    try {
+      // 설명(키워드) + 이미지(비전 LLM) 각각 분류 후 교차 검증
+      const textResult = classifyPractice(description);
+      const imageResult = await classifyPracticeImage(photoPreview);
+      const verdict = verifyPractice(
+        { imageResult, textResult },
+        (id) => PRACTICE_MAP[id]?.label || id,
+      );
+
+      switch (verdict.status) {
+        case VERIFY_STATUS.MISMATCH:
+        case VERIFY_STATUS.NEED_DESCRIPTION:
+        case VERIFY_STATUS.NEED_REPHOTO:
+          // 인정 불가 — 사용자에게 보완 요청 후 제출 차단
+          showToast(verdict.message, "error");
+          return;
+
+        case VERIFY_STATUS.ACCEPTED:
+        case VERIFY_STATUS.FALLBACK_TEXT:
+          // 인정 — 확인 모달로 (검증 결과 함께 표시)
+          setAnalysisResult({
+            ...textResult,
+            id: verdict.id,
+            verification: verdict,
+          });
+          return;
+
+        case VERIFY_STATUS.UNRECOGNIZED:
+        default:
+          // 둘 다 인식 실패 — 직접 선택 모달
+          setAnalysisResult({
+            id: null,
+            confidence: 0,
+            matchedKeyword: null,
+            alternatives: [],
+            verification: verdict,
+          });
+          return;
+      }
+    } finally {
+      setAnalyzing(false);
+    }
   };
 
   const handleConfirmAnalysis = (practiceId, matchedKeyword) => {
-    console.log('[handleConfirmAnalysis] called with', practiceId, matchedKeyword, 'location:', location, 'photoPreview:', !!photoPreview);
+    console.log(
+      "[handleConfirmAnalysis] called with",
+      practiceId,
+      matchedKeyword,
+      "location:",
+      location,
+      "photoPreview:",
+      !!photoPreview,
+    );
     const meta = PRACTICE_MAP[practiceId];
     if (!meta) {
-      console.warn('[handleConfirmAnalysis] no meta for', practiceId);
+      console.warn("[handleConfirmAnalysis] no meta for", practiceId);
       return;
     }
     savePracticeLog({
@@ -283,17 +456,19 @@ export default function PersonalTrack() {
     refreshLogs();
     showToast(`✅ ${meta.label} (+${meta.co2PerUnit} kgCO₂eq) 저장됨`);
     setPhotoPreview(null);
-    setPhotoName('');
-    setDescription('');
+    setPhotoName("");
+    setDescription("");
     setAnalysisResult(null);
   };
 
   const totalSaved = logs.reduce((s, e) => s + (e.co2Saved || 0), 0);
 
   const handleLeaderboardSubmit = () => {
-    if (logs.length === 0) return showToast('인증한 실천이 없습니다', 'error');
-    const submitNickname = nickname.trim() || '익명';
-    const categories = [...new Set(logs.map((l) => l.category).filter(Boolean))];
+    if (logs.length === 0) return showToast("인증한 실천이 없습니다", "error");
+    const submitNickname = nickname.trim() || "익명";
+    const categories = [
+      ...new Set(logs.map((l) => l.category).filter(Boolean)),
+    ];
     savePersonalLeaderboardEntry({
       nickname: submitNickname,
       totalSavedKg: totalSaved,
@@ -301,15 +476,18 @@ export default function PersonalTrack() {
       categories,
     });
     setLeaderboardRefresh((k) => k + 1);
-    showToast(`🏆 ${submitNickname} · ${totalSaved.toFixed(2)} kgCO₂eq 리더보드 등록!`);
+    showToast(
+      `🏆 ${submitNickname} · ${totalSaved.toFixed(2)} kgCO₂eq 리더보드 등록!`,
+    );
   };
 
   return (
     <div className="app">
       <aside className="sidebar">
         <h2>🌱 개인 실천 기록</h2>
-        <p style={{ fontSize: 11, color: '#8b949e', margin: '0 0 12px' }}>
-          위치 선택 → 사진 + 짧은 설명 →<br />AI가 알아서 활동 분류
+        <p style={{ fontSize: 11, color: "#8b949e", margin: "0 0 12px" }}>
+          위치 선택 → 사진 + 짧은 설명 →<br />
+          AI가 알아서 활동 분류
         </p>
 
         <div className="budget-box">
@@ -324,25 +502,51 @@ export default function PersonalTrack() {
         </div>
 
         <h3>인증 가능한 활동 (참고용)</h3>
-        <p style={{ fontSize: 10, color: '#6e7681', margin: '0 0 8px', lineHeight: 1.4 }}>
+        <p
+          style={{
+            fontSize: 10,
+            color: "#6e7681",
+            margin: "0 0 8px",
+            lineHeight: 1.4,
+          }}
+        >
           ※ 직접 선택할 필요 없음. 설명에 키워드만 들어가면 AI가 자동 매칭.
         </p>
         {PRACTICE_CATEGORIES.map((cat) => (
           <div key={cat.id} className="practice-ref-group">
-            <div className="practice-ref-title" style={cat.id === 'counter' ? { color: '#ff7b72', background: '#2d1418' } : {}}>
+            <div
+              className="practice-ref-title"
+              style={
+                cat.id === "counter"
+                  ? { color: "#ff7b72", background: "#2d1418" }
+                  : {}
+              }
+            >
               {cat.icon} {cat.label}
             </div>
             {PRACTICES.filter((p) => p.category === cat.id).map((p) => {
               const isCounter = p.counterproductive;
-              const signed = (p.co2PerUnit >= 0 ? '+' : '') + p.co2PerUnit;
+              const signed = (p.co2PerUnit >= 0 ? "+" : "") + p.co2PerUnit;
               return (
-                <div key={p.id} className={'practice-ref-item' + (isCounter ? ' practice-item-counter' : '')}>
+                <div
+                  key={p.id}
+                  className={
+                    "practice-ref-item" +
+                    (isCounter ? " practice-item-counter" : "")
+                  }
+                >
                   <span className="practice-ref-icon">{p.icon}</span>
                   <div className="practice-ref-meta">
-                    <span className="practice-ref-label" style={isCounter ? { color: '#ff7b72' } : {}}>
+                    <span
+                      className="practice-ref-label"
+                      style={isCounter ? { color: "#ff7b72" } : {}}
+                    >
                       {p.label}
                     </span>
-                    <span className="practice-ref-co2" style={isCounter ? { color: '#ff7b72' } : {}}>
+                    <span
+                      className="practice-ref-co2"
+                      style={isCounter ? { color: "#ff7b72" } : {}}
+                    >
                       {signed} kgCO₂eq
                     </span>
                   </div>
@@ -353,14 +557,18 @@ export default function PersonalTrack() {
         ))}
 
         <h3>사용법</h3>
-        <div style={{ fontSize: 12, color: '#8b949e', lineHeight: 1.6 }}>
-          1. 지도에서 실천 장소 클릭<br />
-          2. 사진 업로드<br />
-          3. 무엇을 했는지 한 줄 설명<br />
-          4. "🤖 AI 분석 & 제출" 클릭<br />
-          5. AI 판단 확인 → 저장<br />
+        <div style={{ fontSize: 12, color: "#8b949e", lineHeight: 1.6 }}>
+          1. 지도에서 실천 장소 클릭
           <br />
-          ※ 모든 수치는 공인 가이드라인 기반 추정치
+          2. 사진 업로드
+          <br />
+          3. 무엇을 했는지 한 줄 설명
+          <br />
+          4. "🤖 AI 분석 & 제출" 클릭
+          <br />
+          5. AI 판단 확인 → 저장
+          <br />
+          <br />※ 모든 수치는 공인 가이드라인 기반 추정치
         </div>
       </aside>
 
@@ -382,29 +590,39 @@ export default function PersonalTrack() {
 
         <div className="dashboard">
           <div className="metric-card">
-            <div className="metric-label">{totalSaved >= 0 ? '누적 감축량' : '⚠️ 누적 순배출 (역효과 우세)'}</div>
-            <div className={'metric-value' + (totalSaved < 0 ? ' negative' : '')}>
-              {totalSaved >= 0 ? '' : '+'}{Math.abs(totalSaved).toFixed(2)}
+            <div className="metric-label">
+              {totalSaved >= 0 ? "누적 감축량" : "⚠️ 누적 순배출 (역효과 우세)"}
             </div>
-            <div className="metric-sub">kgCO₂eq · {logs.length}건 기록{logs.filter((l) => l.co2Saved < 0).length > 0 ? ` (역효과 ${logs.filter((l) => l.co2Saved < 0).length}건 포함)` : ''}</div>
+            <div
+              className={"metric-value" + (totalSaved < 0 ? " negative" : "")}
+            >
+              {totalSaved >= 0 ? "" : "+"}
+              {Math.abs(totalSaved).toFixed(2)}
+            </div>
+            <div className="metric-sub">
+              kgCO₂eq · {logs.length}건 기록
+              {logs.filter((l) => l.co2Saved < 0).length > 0
+                ? ` (역효과 ${logs.filter((l) => l.co2Saved < 0).length}건 포함)`
+                : ""}
+            </div>
           </div>
           <div className="metric-card">
             <div className="metric-label">선택한 장소</div>
             <div className="metric-value" style={{ fontSize: 16 }}>
-              📍 {location?.name || '미선택'}
+              📍 {location?.name || "미선택"}
             </div>
             <div className="metric-sub">
-              {location ? `${location.lng.toFixed(5)}, ${location.lat.toFixed(5)}` : '지도 클릭으로 선택'}
+              {location
+                ? `${location.lng.toFixed(5)}, ${location.lat.toFixed(5)}`
+                : "지도 클릭으로 선택"}
             </div>
           </div>
           <div className="metric-card">
             <div className="metric-label">사진 상태</div>
             <div className="metric-value" style={{ fontSize: 16 }}>
-              {photoPreview ? '✓ 업로드됨' : '미업로드'}
+              {photoPreview ? "✓ 업로드됨" : "미업로드"}
             </div>
-            <div className="metric-sub">
-              {photoName || '우측에서 업로드'}
-            </div>
+            <div className="metric-sub">{photoName || "우측에서 업로드"}</div>
           </div>
         </div>
 
@@ -412,13 +630,13 @@ export default function PersonalTrack() {
           <div className="left">
             <div className="segmented-control" aria-label="카메라 프리셋">
               {[
-                { id: 'flat', label: '평면' },
-                { id: 'iso', label: '아이소' },
-                { id: 'threeD', label: '3D' },
+                { id: "flat", label: "평면" },
+                { id: "iso", label: "아이소" },
+                { id: "threeD", label: "3D" },
               ].map((option) => (
                 <button
                   key={option.id}
-                  className={cameraPreset === option.id ? 'active' : ''}
+                  className={cameraPreset === option.id ? "active" : ""}
                   onClick={() => setCameraPreset(option.id)}
                 >
                   {option.label}
@@ -429,10 +647,17 @@ export default function PersonalTrack() {
         </div>
 
         <div className="baseline-note">
-          💡 인증 사진은 브라우저에만 저장됩니다 (명예 시스템 · 외부 전송 없음)
+          💡 인증 사진은 활동 분류(비전 AI)를 위해 분석 서버로 전송되며, 기록은
+          브라우저에 저장됩니다
         </div>
 
-        {toast && <div className={'toast ' + (toast.type === 'error' ? 'toast-error' : '')}>{toast.msg}</div>}
+        {toast && (
+          <div
+            className={"toast " + (toast.type === "error" ? "toast-error" : "")}
+          >
+            {toast.msg}
+          </div>
+        )}
       </div>
 
       <aside className="right-panel">
@@ -456,7 +681,9 @@ export default function PersonalTrack() {
               </div>
             )}
 
-            <label className="form-label" style={{ marginTop: 12 }}>📝 한 줄 설명</label>
+            <label className="form-label" style={{ marginTop: 12 }}>
+              📝 한 줄 설명
+            </label>
             <textarea
               className="form-textarea"
               placeholder="어떤 실천을 하셨나요? (예: 오늘 텀블러 갖고 카페 갔어요)"
@@ -466,14 +693,17 @@ export default function PersonalTrack() {
             />
 
             <button
-              style={{ width: '100%', marginTop: 14 }}
+              style={{ width: "100%", marginTop: 14 }}
               onClick={handleAnalyze}
-              disabled={!location || !photoPreview || !description.trim()}
+              disabled={
+                analyzing || !location || !photoPreview || !description.trim()
+              }
             >
-              🤖 AI 분석 & 제출
+              {analyzing ? "🔍 분석 중..." : "🤖 AI 분석 & 제출"}
             </button>
-            <p className="form-hint" style={{ color: '#8b949e' }}>
-              💡 설명에 활동 키워드 (예: 텀블러, 자전거, 분리수거) 들어가면 AI가 자동 매칭
+            <p className="form-hint" style={{ color: "#8b949e" }}>
+              💡 이미지(비전 AI)와 설명(키워드)을 교차 검증해, 둘이 일치할 때만
+              실천으로 인정돼요
             </p>
           </div>
         </section>
@@ -482,14 +712,19 @@ export default function PersonalTrack() {
           <div className="panel-title-row">
             <h2>최근 기록 ({logs.length})</h2>
           </div>
-          {logs.length === 0 && <div className="empty compact">아직 기록이 없습니다</div>}
+          {logs.length === 0 && (
+            <div className="empty compact">아직 기록이 없습니다</div>
+          )}
           {logs.slice(0, 6).map((entry) => {
             const isCounter = (Number(entry.co2Saved) || 0) < 0;
-            const signed = (entry.co2Saved >= 0 ? '+' : '') + entry.co2Saved;
+            const signed = (entry.co2Saved >= 0 ? "+" : "") + entry.co2Saved;
             return (
               <div
                 key={entry.id}
-                className={'practice-log-entry' + (isCounter ? ' practice-log-entry-counter' : '')}
+                className={
+                  "practice-log-entry" +
+                  (isCounter ? " practice-log-entry-counter" : "")
+                }
                 role="button"
                 onClick={() => setSelectedLog(entry)}
               >
@@ -497,11 +732,13 @@ export default function PersonalTrack() {
                   <img src={entry.photoPreview} alt="" className="log-photo" />
                 )}
                 <div className="log-meta">
-                  <strong style={isCounter ? { color: '#ff7b72' } : {}}>
+                  <strong style={isCounter ? { color: "#ff7b72" } : {}}>
                     {entry.icon} {entry.practiceLabel}
-                    {isCounter && <span className="counter-warning-badge">역효과</span>}
+                    {isCounter && (
+                      <span className="counter-warning-badge">역효과</span>
+                    )}
                   </strong>
-                  <span style={isCounter ? { color: '#ff7b72' } : {}}>
+                  <span style={isCounter ? { color: "#ff7b72" } : {}}>
                     {signed} kgCO₂eq · 📍 {entry.location?.name}
                   </span>
                 </div>
@@ -522,10 +759,14 @@ export default function PersonalTrack() {
             onChange={(e) => setNickname(e.target.value)}
           />
           <button
-            style={{ width: '100%', marginTop: 10 }}
+            style={{ width: "100%", marginTop: 10 }}
             onClick={handleLeaderboardSubmit}
             disabled={!logs.length}
-            title={!logs.length ? '실천을 1개 이상 등록하면 제출 가능' : `누적 ${totalSaved.toFixed(2)} kgCO₂eq로 리더보드 등록`}
+            title={
+              !logs.length
+                ? "실천을 1개 이상 등록하면 제출 가능"
+                : `누적 ${totalSaved.toFixed(2)} kgCO₂eq로 리더보드 등록`
+            }
           >
             🏆 누적 {totalSaved.toFixed(2)} kg · 리더보드 등록
           </button>
@@ -534,7 +775,11 @@ export default function PersonalTrack() {
         <PersonalLeaderboardPanel refreshKey={leaderboardRefresh} />
       </aside>
 
-      <LogDetailModal log={selectedLog} onClose={() => setSelectedLog(null)} onDelete={handleDeleteLog} />
+      <LogDetailModal
+        log={selectedLog}
+        onClose={() => setSelectedLog(null)}
+        onDelete={handleDeleteLog}
+      />
       {analysisResult && (
         <AnalysisModal
           result={analysisResult}
