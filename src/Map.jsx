@@ -34,6 +34,10 @@ const ZONE_STYLE = {
 
 const BUILDING_TYPES = ['old_building', 'new_building', 'solar_building', 'hospital', 'auxiliary'];
 
+function isBuildingZone(zone) {
+  return zone && BUILDING_TYPES.includes(zone.type);
+}
+
 // 폴리곤 좌표를 GeoJSON 좌표로 변환 (outer + 선택적 hole)
 function toGeoJSONCoords(z) {
   const outer = [...z.polygon, z.polygon[0]];
@@ -88,6 +92,133 @@ function pointInZone(lng, lat, zone) {
   if (!pointInRing(lng, lat, zone.polygon)) return false;
   if (zone.hole && pointInRing(lng, lat, zone.hole)) return false;
   return true;
+}
+
+function distanceSqMeters(aLng, aLat, bLng, bLat) {
+  const lat = ((aLat + bLat) / 2) * Math.PI / 180;
+  const x = (aLng - bLng) * 111320 * Math.cos(lat);
+  const y = (aLat - bLat) * 111320;
+  return x * x + y * y;
+}
+
+function zoneBounds(zone) {
+  return zone.polygon.reduce((bounds, [lng, lat]) => ({
+    minLng: Math.min(bounds.minLng, lng),
+    maxLng: Math.max(bounds.maxLng, lng),
+    minLat: Math.min(bounds.minLat, lat),
+    maxLat: Math.max(bounds.maxLat, lat),
+  }), { minLng: Infinity, maxLng: -Infinity, minLat: Infinity, maxLat: -Infinity });
+}
+
+function zoneCentroid(zone) {
+  let area = 0;
+  let cx = 0;
+  let cy = 0;
+  const pts = zone.polygon;
+  for (let i = 0; i < pts.length; i += 1) {
+    const [x1, y1] = pts[i];
+    const [x2, y2] = pts[(i + 1) % pts.length];
+    const cross = x1 * y2 - x2 * y1;
+    area += cross;
+    cx += (x1 + x2) * cross;
+    cy += (y1 + y2) * cross;
+  }
+  if (Math.abs(area) > 1e-12) {
+    return { lng: cx / (3 * area), lat: cy / (3 * area) };
+  }
+  const avg = pts.reduce((acc, [lng, lat]) => ({ lng: acc.lng + lng, lat: acc.lat + lat }), { lng: 0, lat: 0 });
+  return { lng: avg.lng / pts.length, lat: avg.lat / pts.length };
+}
+
+function projectAtHeight(map, lng, lat, height = 0) {
+  try {
+    const coord = map.transform.locationCoordinate({ lng, lat });
+    const matrix = map.transform.pixelMatrix3D || map.transform.pixelMatrix;
+    return map.transform.coordinatePoint(coord, height, matrix);
+  } catch {
+    return map.project([lng, lat]);
+  }
+}
+
+function screenDistanceSq(map, point, lng, lat, height) {
+  const projected = projectAtHeight(map, lng, lat, height);
+  const dx = projected.x - point.x;
+  const dy = projected.y - point.y;
+  return dx * dx + dy * dy;
+}
+
+function closestInteriorPoint(zone, targetLng, targetLat, map = null, screenPoint = null) {
+  if (pointInZone(targetLng, targetLat, zone)) return { lng: targetLng, lat: targetLat };
+
+  const bounds = zoneBounds(zone);
+  const centroid = zoneCentroid(zone);
+  const candidates = [];
+  const addCandidate = (lng, lat) => {
+    if (Number.isFinite(lng) && Number.isFinite(lat) && pointInZone(lng, lat, zone)) {
+      candidates.push({ lng, lat });
+    }
+  };
+
+  addCandidate(centroid.lng, centroid.lat);
+  const samples = 22;
+  for (let row = 0; row <= samples; row += 1) {
+    const lat = bounds.minLat + ((bounds.maxLat - bounds.minLat) * row) / samples;
+    for (let col = 0; col <= samples; col += 1) {
+      const lng = bounds.minLng + ((bounds.maxLng - bounds.minLng) * col) / samples;
+      addCandidate(lng, lat);
+    }
+  }
+
+  if (!candidates.length) return { lng: targetLng, lat: targetLat };
+
+  const roofHeight = Number(zone.height || 0) + 1;
+  const score = map && screenPoint
+    ? (candidate) => screenDistanceSq(map, screenPoint, candidate.lng, candidate.lat, roofHeight)
+    : (candidate) => distanceSqMeters(candidate.lng, candidate.lat, targetLng, targetLat);
+
+  return candidates.reduce((best, candidate) => (
+    score(candidate) < score(best) ? candidate : best
+  ), candidates[0]);
+}
+
+function findZoneByRenderedBuilding(feature) {
+  if (!feature) return null;
+  const props = feature.properties || {};
+  const zoneId = props.id;
+  if (zoneId) {
+    const zone = CAMPUS_ZONES.find((z) => z.id === zoneId);
+    if (isBuildingZone(zone)) return zone;
+  }
+
+  const osmId = Number(feature.id ?? props.osm_id ?? props.id);
+  if (Number.isFinite(osmId)) {
+    const zone = CAMPUS_ZONES.find((z) => Number(z.osm_id) === osmId);
+    if (isBuildingZone(zone)) return zone;
+  }
+
+  return null;
+}
+
+function queryRenderedFeaturesSafe(map, point, layerIds) {
+  const layers = layerIds.filter((id) => map.getLayer(id));
+  if (!layers.length) return [];
+  return map.queryRenderedFeatures(point, { layers });
+}
+
+function findClickedBuildingZone(map, point) {
+  const campusHits = queryRenderedFeaturesSafe(map, point, ['campus-buildings-3d']);
+  for (const feature of campusHits) {
+    const zone = findZoneByRenderedBuilding(feature);
+    if (zone) return zone;
+  }
+
+  const osmHits = queryRenderedFeaturesSafe(map, point, ['3d-buildings']);
+  for (const feature of osmHits) {
+    const zone = findZoneByRenderedBuilding(feature);
+    if (zone) return zone;
+  }
+
+  return null;
 }
 
 function findBuildingHeight(lng, lat) {
@@ -210,6 +341,7 @@ export default function CampusMap({
   const pickModeRef = useRef(pickMode);
   const onPickRef = useRef(onPick);
   const onLogClickRef = useRef(onLogClick);
+  const itemsRef = useRef(items);
 
   useEffect(() => { selectedRef.current = selectedType; }, [selectedType]);
   useEffect(() => { onRemoveRef.current = onRemove; }, [onRemove]);
@@ -217,6 +349,7 @@ export default function CampusMap({
   useEffect(() => { pickModeRef.current = pickMode; }, [pickMode]);
   useEffect(() => { onPickRef.current = onPick; }, [onPick]);
   useEffect(() => { onLogClickRef.current = onLogClick; }, [onLogClick]);
+  useEffect(() => { itemsRef.current = items; }, [items]);
 
   useEffect(() => {
     const map = new maplibregl.Map({
@@ -230,6 +363,9 @@ export default function CampusMap({
       maxPitch: 75,
     });
     mapRef.current = map;
+    if (import.meta.env.DEV) {
+      window.__SIMINHA_MAP__ = map;
+    }
 
     map.on('load', () => {
       // 호버 팝업 — 모든 레이어 추가 전에 미리 만들어 둠 (이후 핸들러에서 참조)
@@ -934,36 +1070,31 @@ export default function CampusMap({
       if (!type) return;
 
       // 이미 배치된 아이템 위 클릭 → 무시
-      const placedHits = map.queryRenderedFeatures(e.point, { layers: ['placed-items-body'] });
+      const placedHits = queryRenderedFeaturesSafe(map, e.point, ['placed-items-body']);
       if (placedHits.length > 0) return;
 
       // 3D 건물 클릭 보정:
-      // 사용자가 시각적으로 건물 옥상을 클릭하면 e.lngLat이 건물 footprint 너머
-      // 지면에 떨어짐. 건물 레이어 hit-test로 클릭한 건물 폴리곤의 중앙 근처로 옮김.
+      // pitched 3D 지도에서는 e.lngLat이 사용자가 본 옥상이 아니라 지면과 만난 좌표일 수 있다.
+      // 건물 hit-test가 성공하면 클릭 화면점에 가장 가까운 실제 건물 폴리곤 내부 좌표로 보정한다.
       let { lng, lat } = e.lngLat;
-      const bldHits = map.queryRenderedFeatures(e.point, { layers: ['campus-buildings-3d'] });
-      if (bldHits.length > 0) {
-        const props = bldHits[0].properties;
-        const zone = CAMPUS_ZONES.find((z) => z.id === props.id);
-        if (zone) {
-          // 폴리곤 중심을 사용 (안전한 옥상 위치)
-          let cx = 0, cy = 0;
-          for (const [x, y] of zone.polygon) { cx += x; cy += y; }
-          cx /= zone.polygon.length; cy /= zone.polygon.length;
-          // 같은 건물에 여러 개 배치 시 겹치지 않게 약간씩 분산
-          const offset = 0.000015;
-          const angle = Math.random() * Math.PI * 2;
-          const dist = Math.random() * offset;
-          lng = cx + Math.cos(angle) * dist / Math.cos((cy * Math.PI) / 180);
-          lat = cy + Math.sin(angle) * dist;
-        }
+      const clickedBuilding = findClickedBuildingZone(map, e.point);
+      const isRoofItem = Boolean(ITEM_MAP[type]?.model3d?.onRoof);
+      if (clickedBuilding && isRoofItem) {
+        const corrected = closestInteriorPoint(clickedBuilding, lng, lat, map, e.point);
+        lng = corrected.lng;
+        lat = corrected.lat;
       }
       onPlaceRef.current({ type, lng, lat });
     });
 
     map.on('contextmenu', (e) => e.preventDefault());
 
-    return () => map.remove();
+    return () => {
+      if (import.meta.env.DEV && window.__SIMINHA_MAP__ === map) {
+        delete window.__SIMINHA_MAP__;
+      }
+      map.remove();
+    };
   }, []);
 
   // 배치 아이템 변경 시 GeoJSON 업데이트

@@ -1,18 +1,31 @@
 import { useEffect, useState } from 'react';
-import { loadLeaderboardEntries } from './storage.js';
+import { loadLeaderboardEntriesOnline } from './storage.js';
 
-export default function Leaderboard({ refreshKey }) {
+export default function Leaderboard({ refreshKey, onSubmit, submitDisabled, submitting }) {
   const [entries, setEntries] = useState([]);
 
   useEffect(() => {
-    setEntries(loadLeaderboardEntries());
+    let alive = true;
+    loadLeaderboardEntriesOnline().then((nextEntries) => {
+      if (alive) setEntries(nextEntries);
+    });
+    return () => {
+      alive = false;
+    };
   }, [refreshKey]);
 
   const rankClass = (r) => (r === 1 ? 'gold' : r === 2 ? 'silver' : r === 3 ? 'bronze' : '');
 
   return (
     <section className="leaderboard">
-      <h2>🏆 리더보드</h2>
+      <div className="panel-title-row">
+        <h2>🏆 리더보드</h2>
+        {onSubmit && (
+          <button className="secondary small-button" onClick={onSubmit} disabled={submitDisabled || submitting}>
+            {submitting ? '등록 중' : '등록'}
+          </button>
+        )}
+      </div>
       {entries.length === 0 && <div className="empty">아직 등록된 시나리오가 없습니다</div>}
       {entries.map((e) => (
         <div key={e.rank + e.nickname + e.created_at} className="entry">
